@@ -35,9 +35,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing script" }, { status: 400 });
     }
 
+    // Lookup gender of selected voice to lock it in the prompt
+    const VOICE_GENDERS: Record<string, string> = {
+      Kore: "female", Leda: "female", Aoede: "female", Callirrhoe: "female",
+      Autonoe: "female", Despina: "female", Erinome: "female", Laomedeia: "female",
+      Achernar: "female", Schedar: "female", Gacrux: "female", Pulcherrima: "female",
+      Vindemiatrix: "female", Sulafat: "female",
+      Puck: "male", Charon: "male", Fenrir: "male", Enceladus: "male",
+      Iapetus: "male", Umbriel: "male", Algieba: "male", Algenib: "male",
+      Rasalgethi: "male", Alnilam: "male", Achird: "male", Zubenelgenubi: "male",
+      Sadachbia: "male", Sadaltager: "male",
+    };
+    const gender = VOICE_GENDERS[voice] ?? "neutral";
+
+    // Prepend a strict voice-lock instruction so Gemini does NOT override the voice
+    const lockedScript = `[VOICE OVERRIDE — STRICT: Use ONLY the prebuilt voice named "${voice}" (${gender}). Do NOT switch gender. Do NOT use any other voice. Render everything below as-is.]\n\n${script}`;
+
     const ttsResponse = await ai.models.generateContent({
       model: "gemini-3.1-flash-tts-preview",
-      contents: script,
+      contents: lockedScript,
       config: {
         responseModalities: ["AUDIO"],
         speechConfig: {

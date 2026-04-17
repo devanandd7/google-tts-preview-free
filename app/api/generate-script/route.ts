@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { FREE_AI_SCRIPT_LIMIT } from "@/lib/constants";
+import { withGeminiRetry } from "@/lib/gemini";
 
 export async function POST(req: Request) {
   try {
@@ -70,9 +71,10 @@ export async function POST(req: Request) {
       ? `IMPORTANT: Write the TRANSCRIPT section in natural, conversational Hindi (Devanagari script). Mix in a few English words naturally where Indians commonly do (Hinglish style is fine). The Audio Profile, Scene, and Director's Notes sections can be in English, but the TRANSCRIPT must be in Hindi.`
       : `Write the TRANSCRIPT section in natural, fluent English.`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `You are a master TTS script director for Google Gemini's native audio model. Your scripts are vivid, emotionally rich, and highly performable.
+    const response = await withGeminiRetry(() =>
+      ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `You are a master TTS script director for Google Gemini's native audio model. Your scripts are vivid, emotionally rich, and highly performable.
 
 Given a user's idea, generate a fully-formed, emotionally expressive TTS director-style script with ALL of these sections:
 
@@ -105,7 +107,8 @@ ${langInstruction}
 User's idea: ${prompt}
 
 Return ONLY the formatted script. No commentary, no explanations.`,
-    });
+      })
+    );
 
     const script = response.text;
 
@@ -129,6 +132,11 @@ Return ONLY the formatted script. No commentary, no explanations.`,
 
   } catch (err: any) {
     console.error("[Script Gen Error]", err);
-    return NextResponse.json({ error: err.message || "Something went wrong" }, { status: 500 });
+    const code = err?.code ?? "UNKNOWN";
+    const status = code === "OVERLOADED" ? 503 : 500;
+    return NextResponse.json(
+      { error: err.message || "Something went wrong", code, retryAfter: err?.retryAfter },
+      { status }
+    );
   }
 }

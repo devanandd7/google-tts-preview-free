@@ -24,6 +24,26 @@
   to { transform: translateY(0); opacity: 1; }
 }
 
+/* Toast notification animations */
+@keyframes toast-in {
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes toast-out {
+  from { transform: translateX(0);    opacity: 1; }
+  to   { transform: translateX(110%); opacity: 0; }
+}
+
+.toast-enter { animation: toast-in  0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.toast-exit  { animation: toast-out 0.3s  cubic-bezier(0.4, 0, 1, 1)       forwards; }
+
+/* Countdown progress bar */
+@keyframes shrink {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

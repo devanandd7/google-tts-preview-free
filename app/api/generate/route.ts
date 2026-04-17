@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { FREE_DIRECT_TTS_LIMIT } from "@/lib/constants";
+import { withGeminiRetry } from "@/lib/gemini";
 
 // Convert raw PCM from Gemini into a proper WAV file with header
 function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 16): Buffer {
@@ -99,18 +100,20 @@ export async function POST(req: Request) {
 
     const lockedScript = `[VOICE OVERRIDE — STRICT: Use ONLY the prebuilt voice named "${voice}" (${gender}). Do NOT switch gender. Do NOT use any other voice. Render everything below as-is.]\n\n${script}`;
 
-    const ttsResponse = await ai.models.generateContent({
-      model: "gemini-3.1-flash-tts-preview",
-      contents: lockedScript,
-      config: {
-        responseModalities: ["AUDIO"],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: voice },
+    const ttsResponse = await withGeminiRetry(() =>
+      ai.models.generateContent({
+        model: "gemini-3.1-flash-tts-preview",
+        contents: lockedScript,
+        config: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: voice },
+            },
           },
         },
-      },
-    });
+      })
+    );
 
     const audioData = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
 
@@ -136,6 +139,11 @@ export async function POST(req: Request) {
     });
   } catch (err: any) {
     console.error("[TTS Error]", err);
-    return NextResponse.json({ error: err.message || "Something went wrong" }, { status: 500 });
+    const code = err?.code ?? "UNKNOWN";
+    const status = code === "OVERLOADED" ? 503 : 500;
+    return NextResponse.json(
+      { error: err.message || "Something went wrong", code, retryAfter: err?.retryAfter },
+      { status }
+    );
   }
 }

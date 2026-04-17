@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Outfit, Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { Toaster } from "./components/Toaster";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -30,7 +31,10 @@ export default function RootLayout({
         className={`${outfit.variable} ${inter.variable} h-full antialiased`}
         suppressHydrationWarning
       >
-        <body className="min-h-full flex flex-col">{children}</body>
+        <body className="min-h-full flex flex-col">
+          {children}
+          <Toaster />
+        </body>
       </html>
     </ClerkProvider>
   );

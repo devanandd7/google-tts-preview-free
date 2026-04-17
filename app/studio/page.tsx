@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { UserButton, useUser, useSession } from "@clerk/nextjs";
 import Link from "next/link";
 import Script from "next/script";
+import { toast } from "../components/Toaster";
 
 // Extend window for Razorpay
 declare global {
@@ -296,17 +297,22 @@ export default function StudioPage() {
       const data = await res.json();
       if (!res.ok) {
         if (data.limitReached) {
-            setError(data.error);
-            // Optionally could pop the settings or upgrade modal directly here.
+          setError(data.error);
+          return;
+        }
+        if (data.code === "OVERLOADED" || res.status === 503) {
+          toast.overloaded(data.retryAfter ?? 30);
+          return;
         }
         throw new Error(data.error);
       }
       setEditedScript(data.script);
       setStage("review");
       if (data.usage) {
-          setProfile(prev => prev ? { ...prev, aiScriptCount: data.usage.aiScriptCount } : null);
+        setProfile(prev => prev ? { ...prev, aiScriptCount: data.usage.aiScriptCount } : null);
       }
     } catch (err: any) {
+      toast.error(err.message || "Failed to generate script. Please try again.", "Script Generation Failed");
       setError(err.message);
     } finally {
       setLoading(false);
@@ -326,8 +332,22 @@ export default function StudioPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-         if (data.limitReached) setError(data.error);
-         throw new Error(data.error);
+        if (data.limitReached) {
+          setError(data.error);
+          return;
+        }
+        if (data.code === "OVERLOADED" || res.status === 503) {
+          toast.overloaded(data.retryAfter ?? 30);
+          return;
+        }
+        if (data.code === "SAFETY_BLOCK") {
+          toast.warning(
+            "Your script was blocked by Gemini's safety filters. Please revise the content and try again.",
+            "Content Blocked"
+          );
+          return;
+        }
+        throw new Error(data.error);
       }
 
       const newItem: AudioItem = {
@@ -338,10 +358,12 @@ export default function StudioPage() {
         createdAt: new Date(),
       };
       setAudioHistory(prev => [newItem, ...prev]);
+      toast.success(`Voice "${voice}" generated successfully!`, "Audio Ready");
       if (data.usage) {
-          setProfile(prev => prev ? { ...prev, directTtsCount: data.usage.directTtsCount } : null);
+        setProfile(prev => prev ? { ...prev, directTtsCount: data.usage.directTtsCount } : null);
       }
     } catch (err: any) {
+      toast.error(err.message || "Failed to generate audio. Please try again.", "Generation Failed");
       setError(err.message);
     } finally {
       setLoading(false);
@@ -647,7 +669,7 @@ export default function StudioPage() {
                 disabled={loading || !userIdea.trim()}
                 className="w-full flex items-center justify-center gap-3 py-4 bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-violet-500/20 disabled:shadow-none active:scale-[0.98] disabled:cursor-not-allowed"
               >
-                {loading ? <><Spinner /> Writing script…</> : (
+                {loading ? <><Spinner /> Generating — auto-retrying if overloaded…</> : (
                   <>
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
                     Generate Script with AI

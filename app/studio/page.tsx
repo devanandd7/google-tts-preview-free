@@ -18,7 +18,7 @@ declare global {
 
 type Language = "hindi" | "english";
 
-type Mode = "direct" | "ai";
+type Mode = "direct" | "ai" | "broadcast";
 type Stage = "input" | "review";
 
 interface UserProfile {
@@ -26,6 +26,7 @@ interface UserProfile {
   planStatus: "active" | "expired" | "none";
   directTtsCount: number;
   aiScriptCount: number;
+  broadcastCount: number;
   hasOwnApiKey?: boolean;
   planActivatedAt?: string | null;
   planExpiresAt?: string | null;
@@ -136,10 +137,17 @@ export default function StudioPage() {
   const [editedScript, setEditedScript] = useState("");
 
   const [voice, setVoice] = useState("Kore");
+  const [voice1, setVoice1] = useState("Puck");
+  const [voice2, setVoice2] = useState("Kore");
+
   const [loading, setLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
   const [error, setError] = useState("");
   const [audioDurations, setAudioDurations] = useState<Record<string, number>>({});
+  
+  // Live Session Trackers
+  const [sessionTokens, setSessionTokens] = useState(0);
+  const [sessionAudioRequests, setSessionAudioRequests] = useState(0);
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -314,11 +322,17 @@ export default function StudioPage() {
     if (!text.trim()) return;
     setLoading(true);
     setError("");
+
+    const endpoint = mode === "broadcast" ? "/api/generate-broadcast-script" : "/api/generate-script";
+    const payload = mode === "broadcast"
+      ? { prompt: text, language, voice1, voice2, durationMinutes: scriptDuration }
+      : { prompt: text, language, voice, durationMinutes: scriptDuration };
+
     try {
-      const res = await fetch("/api/generate-script", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: text, language, voice, durationMinutes: scriptDuration }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -342,8 +356,17 @@ export default function StudioPage() {
       }
       setEditedScript(data.script);
       setStage("review");
+      if (data.tokenUsage) {
+         setSessionTokens(prev => prev + data.tokenUsage);
+         toast.success(`Generated using ${data.tokenUsage.toLocaleString()} tokens`, "Live Token Usage");
+      }
+      
       if (data.usage) {
-        setProfile(prev => prev ? { ...prev, aiScriptCount: data.usage.aiScriptCount } : null);
+        if (mode === "broadcast") {
+          setProfile(prev => prev ? { ...prev, broadcastCount: data.usage.broadcastCount } : null);
+        } else {
+          setProfile(prev => prev ? { ...prev, aiScriptCount: data.usage.aiScriptCount } : null);
+        }
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to generate script. Please try again.", "Script Generation Failed");
@@ -358,11 +381,17 @@ export default function StudioPage() {
     if (!script.trim()) return;
     setAudioLoading(true);
     setError("");
+
+    const endpoint = mode === "broadcast" ? "/api/generate-broadcast-audio" : "/api/generate";
+    const payload = mode === "broadcast"
+      ? { script, voice1, voice2 }
+      : { script, voice };
+
     try {
-      const res = await fetch("/api/generate", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script, voice }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -392,17 +421,27 @@ export default function StudioPage() {
         throw new Error(data.error);
       }
 
+      const voiceLabel = mode === "broadcast" ? `${voice1} & ${voice2}` : voice;
       const newItem: AudioItem = {
         id: Date.now().toString(),
-        voice,
+        voice: voiceLabel,
         scriptPreview: script.slice(0, 100) + (script.length > 100 ? "…" : ""),
         audioBase64: data.audioBase64,
         createdAt: new Date(),
       };
       setAudioHistory(prev => [newItem, ...prev]);
-      toast.success(`Voice "${voice}" generated successfully!`, "Audio Ready");
+      
+      // Update our live requests metric (Broadcast audio consumes multiple requests behind the scenes)
+      const requestsMade = mode === "broadcast" ? 2 : 1; 
+      setSessionAudioRequests(prev => prev + requestsMade);
+
+      toast.success(mode === "broadcast" ? "Broadcast audio generated successfully!" : `Voice "${voiceLabel}" generated successfully!`, "Audio Ready");
       if (data.usage) {
-        setProfile(prev => prev ? { ...prev, directTtsCount: data.usage.directTtsCount } : null);
+        if (mode === "broadcast") {
+           setProfile(prev => prev ? { ...prev, broadcastCount: data.usage.broadcastCount } : null);
+        } else {
+           setProfile(prev => prev ? { ...prev, directTtsCount: data.usage.directTtsCount } : null);
+        }
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to generate audio. Please try again.", "Generation Failed");
@@ -457,30 +496,39 @@ export default function StudioPage() {
               <div className="hidden sm:flex items-center gap-2 mr-2">
                 {profile.plan === "pro" ? (
                   <div className="flex items-center gap-3">
-                    {/* Visual Quota Circle Tracker for Custom Key / Pro usage limiting */}
-                    <div className="flex items-center gap-2 mr-1 bg-slate-900/60 pl-1 pr-3 py-1 rounded-full border border-slate-800 shadow-[inset_0_2px_10px_rgba(0,0,0,0.2)]">
-                      <div className="relative w-7 h-7 flex items-center justify-center">
-                        <svg className="absolute inset-0 w-full h-full -rotate-90 transform" viewBox="0 0 36 36">
-                          <circle cx="18" cy="18" r="15" fill="none" className="stroke-slate-800" strokeWidth="3" />
-                          {/* Animate stroke Dash Offset based on daily 1500 capacity, e.g. 94.2 is circumference */}
-                          <circle cx="18" cy="18" r="15" fill="none" className="stroke-violet-500 transition-all duration-[1500ms] ease-out drop-shadow-[0_0_6px_rgba(139,92,246,0.5)]" strokeWidth="3" strokeDasharray="94.2" strokeDashoffset={94.2 - (Math.max(0, 1500 - profile.directTtsCount) / 1500 * 94.2)} strokeLinecap="round" />
-                        </svg>
-                        <svg className="w-3.5 h-3.5 text-violet-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    {/* Live Dynamic Token Usage Widget */}
+                    <div className="flex items-center gap-2 mr-1 bg-slate-900/60 pl-3 pr-4 py-1.5 rounded-xl border border-slate-800 shadow-[inset_0_2px_10px_rgba(0,0,0,0.2)]" title="API usage in this session">
+                      <div className="flex flex-col border-r border-slate-800 pr-3">
+                        <span className="text-[9px] font-black tracking-widest text-emerald-500 uppercase overflow-hidden whitespace-nowrap">Session Tokens</span>
+                        <span className="text-sm font-mono font-bold text-white leading-none mt-1 animate-pulse">{sessionTokens > 0 ? sessionTokens.toLocaleString() : "0"}</span>
                       </div>
-                      <div className="flex flex-col">
-                        <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest leading-none mb-0.5">Key Quota</span>
-                        <span className="text-xs font-mono font-bold text-white leading-none">{Math.max(0, 1500 - profile.directTtsCount)}</span>
+                      <div className="flex flex-col pl-1">
+                        <span className="text-[9px] font-black tracking-widest text-indigo-400 uppercase overflow-hidden whitespace-nowrap">Audio Req</span>
+                        <span className="text-sm font-mono font-bold text-white leading-none mt-1">{sessionAudioRequests}</span>
                       </div>
                     </div>
 
-                    <span className="px-3 py-1 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-bold rounded-full shadow-[0_0_15px_rgba(16,185,129,0.2)]">
-                      PRO PLAN
-                    </span>
+                    <div className="group relative">
+                       <span className="px-3 py-1.5 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-bold rounded-lg shadow-[0_0_15px_rgba(16,185,129,0.2)] cursor-help">
+                         PRO PLAN
+                       </span>
+                       <div className="opacity-0 invisible group-hover:opacity-100 group-hover:visible absolute top-full mt-2 right-0 w-[260px] bg-slate-800 border border-slate-700 p-3 rounded-xl shadow-2xl z-50 text-xs text-slate-300 pointer-events-none transition-all font-medium">
+                         <p className="text-emerald-400 font-bold mb-1 border-b border-slate-700/50 pb-1">Google Free Tier Limits:</p>
+                         <ul className="list-disc pl-4 space-y-1 mt-1 font-mono text-[11px]">
+                           <li>Text & Scripts: <span className="text-white">1,500 req / day</span></li>
+                           <li>TTS Audio: <span className="text-white">10 req / day</span></li>
+                         </ul>
+                         <p className="mt-2 text-slate-400 text-[10px] leading-tight italic">
+                           Note: The Gemini API does not allow us to fetch your remaining limits. 
+                           Broadcast audio uses multiple audio requests at once!
+                         </p>
+                       </div>
+                    </div>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
                     <span className="px-3 py-1 bg-slate-800 border border-slate-700 text-slate-300 text-xs font-medium rounded-full">
-                      Free: {profile.directTtsCount}/3 TTS · {profile.aiScriptCount}/2 AI Scripts
+                      Free: {profile.directTtsCount}/3 TTS · {profile.aiScriptCount}/2 Scripts · {profile.broadcastCount ?? 0}/3 Broadcasts
                     </span>
                     <button onClick={handleUpgrade} className="px-3 py-1 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-bold rounded-full transition-all shadow-lg active:scale-95">
                       Upgrade (₹49)
@@ -651,13 +699,13 @@ export default function StudioPage() {
 
           {/* MODE TABS & SETUP */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex rounded-xl bg-slate-900 border border-slate-800 p-1 gap-1 w-fit shrink-0">
+            <div className="flex rounded-xl bg-slate-900 border border-slate-800 p-1 gap-1 w-fit shrink-0 overflow-x-auto">
               <button
                 onClick={() => handleModeSwitch("direct")}
                 className={`flex items-center justify-center gap-2 px-6 h-11 min-w-[140px] rounded-lg text-sm font-semibold transition-all ${mode === "direct" ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "text-slate-400 hover:text-white"
                   }`}
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
                 Direct TTS
               </button>
               <button
@@ -665,8 +713,16 @@ export default function StudioPage() {
                 className={`flex items-center justify-center gap-2 px-6 h-11 min-w-[140px] rounded-lg text-sm font-semibold transition-all ${mode === "ai" ? "bg-violet-600 text-white shadow-lg shadow-violet-500/20" : "text-slate-400 hover:text-white"
                   }`}
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
                 AI Script Builder
+              </button>
+              <button
+                onClick={() => handleModeSwitch("broadcast")}
+                className={`flex items-center justify-center gap-2 px-6 h-11 min-w-[140px] rounded-lg text-sm font-semibold transition-all ${mode === "broadcast" ? "bg-pink-600 text-white shadow-lg shadow-pink-500/20" : "text-slate-400 hover:text-white"
+                  }`}
+              >
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.829 1.58-1.936a4.5 4.5 0 001.31-.433m-1.5 2.56a12.12 12.12 0 01-3 0m4.5-2.56V15.75" /><path strokeLinecap="round" strokeLinejoin="round" d="M10.875 18v-.192c0-.983-.658-1.829-1.58-1.936a4.5 4.5 0 01-1.31-.433" /></svg>
+                AI Broadcast
               </button>
             </div>
 
@@ -855,6 +911,151 @@ export default function StudioPage() {
                   isPro={profile?.plan === 'pro'}
                   language={language}
                 />
+              </div>
+
+              {error && <ErrorBox message={error} />}
+            </div>
+          )}
+
+          {/* ---- BROADCAST MODE — STEP 1: Idea ---- */}
+          {mode === "broadcast" && stage === "input" && (
+            <div className="space-y-5">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Broadcast Ideas</p>
+                  <LanguageToggle language={language} onChange={handleLanguageChange} />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: "🎤 AI Interview", prompt: "A heated podcast interview where the host questions a guest about the dangers of artificial general intelligence." },
+                    { label: "🚀 Space Race Debate", prompt: "A lively debate on a radio show about whether humans should colonize Mars or focus on saving Earth." },
+                    { label: "😂 Comedy Duo", prompt: "Two friends doing a comedy podcast, talking about the weirdest food combinations they've tried." },
+                    { label: "👻 Spooky Stories", prompt: "A late-night show where two hosts discuss a local ghost legend and freak each other out." }
+                  ].map(sp => (
+                    <button
+                      key={sp.label}
+                      onClick={() => {
+                        setUserIdea(sp.prompt);
+                        handleGenerateScript(sp.prompt);
+                      }}
+                      disabled={loading}
+                      className="px-3 py-1.5 text-sm font-medium bg-slate-800/80 hover:bg-pink-600/20 border border-slate-700 hover:border-pink-500/50 text-slate-300 hover:text-pink-300 rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {sp.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
+                {/* Step indicator */}
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-1">
+                  <span className={`flex items-center gap-1.5 font-semibold text-xs text-pink-400`}><span className={`w-5 h-5 rounded-full flex items-center justify-center bg-pink-600 text-white`}>1</span>Setup</span>
+                  <span className="w-6 h-px bg-slate-800" />
+                  <span className={`flex items-center gap-1.5 font-semibold text-xs text-slate-600`}><span className={`w-5 h-5 rounded-full flex items-center justify-center bg-slate-800 text-slate-500`}>2</span>Review</span>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-300 mb-2">
+                    Topic of the Broadcast
+                  </label>
+                  <textarea
+                     rows={4}
+                     value={userIdea}
+                     onChange={e => setUserIdea(e.target.value)}
+                     placeholder="e.g., A discussion between a cynical host and an overly optimistic guest..."
+                     className="w-full bg-slate-800/80 border border-slate-700 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20 rounded-xl px-4 py-3 text-slate-200 placeholder:text-slate-600 outline-none transition-all text-sm resize-none leading-relaxed"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-300 mb-2">Speaker 1 (Host)</label>
+                    <VoiceSelector voice={voice1} onChange={setVoice1} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-300 mb-2">Speaker 2 (Guest)</label>
+                    <VoiceSelector voice={voice2} onChange={setVoice2} />
+                  </div>
+                </div>
+
+                {/* Duration Slider */}
+                <div className="pt-2">
+                  <label className="flex items-center justify-between text-sm font-semibold text-slate-300 mb-3">
+                    Target Duration
+                    <div className="px-2.5 py-0.5 rounded-md bg-slate-950/80 border border-slate-800 text-pink-400 font-mono font-bold text-xs tracking-wider">
+                      {scriptDuration} MINUTE{scriptDuration > 1 ? 'S' : ''}
+                    </div>
+                  </label>
+                  <input
+                    type="range"
+                    min="1"
+                    max={lengthMode === "short" ? "2" : "9"}
+                    value={scriptDuration}
+                    onChange={e => setScriptDuration(parseInt(e.target.value))}
+                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer outline-none focus:ring-2 focus:ring-pink-500/50"
+                  />
+                  <div className="flex justify-between text-[10px] font-bold text-slate-500 mt-2 tracking-wider">
+                    <span>1 MIN</span>
+                    <span>{lengthMode === "short" ? "2" : "9"} MINS</span>
+                  </div>
+                </div>
+              </div>
+
+              {error && <ErrorBox message={error} />}
+
+              <button
+                onClick={() => handleGenerateScript()}
+                disabled={loading || !userIdea.trim() || voice1 === voice2}
+                className="w-full flex items-center justify-center gap-3 py-4 bg-gradient-to-r from-pink-600 to-rose-500 hover:from-pink-500 hover:to-rose-400 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-pink-500/20 disabled:shadow-none active:scale-[0.98] disabled:cursor-not-allowed"
+              >
+                {loading ? <><Spinner /> Formatting Dialogue…</> : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.829 1.58-1.936a4.5 4.5 0 001.31-.433m-1.5 2.56a12.12 12.12 0 01-3 0m4.5-2.56V15.75" /></svg>
+                    {voice1 === voice2 ? "Select different voices" : "Generate Dialogue Script"}
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* ---- BROADCAST MODE — STEP 2: Review ---- */}
+          {mode === "broadcast" && stage === "review" && (
+            <div className="space-y-5">
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-1">
+                  <span className={`flex items-center gap-1.5 font-semibold text-xs text-slate-600`}><span className={`w-5 h-5 rounded-full flex items-center justify-center bg-slate-800 text-slate-500`}>1</span>Setup</span>
+                  <span className="w-6 h-px bg-slate-800" />
+                  <span className={`flex items-center gap-1.5 font-semibold text-xs text-pink-400`}><span className={`w-5 h-5 rounded-full flex items-center justify-center bg-pink-600 text-white`}>2</span>Review Script</span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-semibold text-slate-300">Dialogue Script</label>
+                  <span className="text-xs text-pink-400 bg-pink-500/10 border border-pink-500/20 px-2 py-1 rounded-full">Keep [Name: text] format</span>
+                </div>
+                <textarea
+                  rows={16}
+                  value={editedScript}
+                  onChange={e => setEditedScript(e.target.value)}
+                  className="w-full bg-slate-800/80 border border-slate-700 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20 rounded-xl px-4 py-3 text-slate-200 outline-none transition-all font-mono text-sm resize-none leading-relaxed"
+                />
+               
+                <div className="flex items-center gap-4 pt-1">
+                  <button
+                    onClick={handleGenerateAudio}
+                    disabled={audioLoading || !editedScript.trim()}
+                    className={`w-full h-12 flex items-center justify-center gap-2 px-6 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-500 text-white font-bold text-sm rounded-xl transition-all shadow-lg hover:shadow-pink-500/20 disabled:shadow-none active:scale-[0.98] disabled:cursor-not-allowed`}
+                  >
+                    {audioLoading ? <Spinner /> : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                        </svg>
+                        Generate Broadcast Audio
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {error && <ErrorBox message={error} />}

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
-import { FREE_AI_SCRIPT_LIMIT } from "@/lib/constants";
+import { FREE_BROADCAST_LIMIT } from "@/lib/constants";
 import { withGeminiRetry } from "@/lib/gemini";
 import { decrypt } from "@/lib/encryption";
 
@@ -37,33 +37,34 @@ export async function POST(req: Request) {
       user.planStatus = "active";
       await user.save();
     } else if (user.plan === "pro" && user.planExpiresAt && new Date(user.planExpiresAt) <= new Date()) {
-      // Auto-expire -- treat as free for this request
       user.plan = "free";
       user.planStatus = "expired";
       await user.save();
     }
 
-    const { prompt, language = "hindi", voice = "Kore", durationMinutes = 1 } = await req.json();
+    const { prompt, language = "hindi", voice1 = "Puck", voice2 = "Kore", durationMinutes = 1 } = await req.json();
 
     if (!prompt?.trim()) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
+    if (durationMinutes > 9) {
+      return NextResponse.json({ error: "Duration cannot exceed 9 minutes" }, { status: 400 });
+    }
 
     // ── Enforce limits ──
     if (user.plan === "free") {
-      if (user.aiScriptCount >= FREE_AI_SCRIPT_LIMIT) {
+      if (user.broadcastCount >= FREE_BROADCAST_LIMIT) {
         return NextResponse.json(
           {
-            error: `Free plan limit reached (${FREE_AI_SCRIPT_LIMIT} AI script generations). Upgrade to Pro to get unlimited generations.`,
+            error: `Free plan limit reached (${FREE_BROADCAST_LIMIT} Broadcasts). Upgrade to Pro to get unlimited generations.`,
             limitReached: true,
-            type: "ai",
+            type: "broadcast",
           },
           { status: 403 }
         );
       }
     }
 
-    // Determine which API key to use
     const userApiKey = user.plan === "pro" && user.ownApiKey ? decrypt(user.ownApiKey) : null;
     const serverApiKey = process.env.GEMINI_API_KEY!;
 
@@ -79,53 +80,43 @@ export async function POST(req: Request) {
       Rasalgethi: "male", Alnilam: "male", Achird: "male", Zubenelgenubi: "male",
       Sadachbia: "male", Sadaltager: "male",
     };
-    const gender = VOICE_GENDERS[voice] ?? "neutral";
+    const gender1 = VOICE_GENDERS[voice1] ?? "neutral";
+    const gender2 = VOICE_GENDERS[voice2] ?? "neutral";
 
     const langInstruction = isHindi
-      ? `IMPORTANT: Write the TRANSCRIPT section in natural, conversational Hindi (Devanagari script). Mix in a few English words naturally where Indians commonly do (Hinglish style is fine). The Audio Profile, Scene, and Director's Notes sections can be in English, but the TRANSCRIPT must be in Hindi.\nCRITICAL RULE: The narrator is a ${gender}. You MUST write all Hindi verbs, adjectives, and pronouns from a strictly ${gender} perspective (e.g., if female, use 'मैं जाती हूँ', 'मैं खुश हूँ'; if male, use 'मैं जाता हूँ'). NEVER break this gender rule.`
-      : `Write the TRANSCRIPT section in natural, fluent English. Determine the tone to perfectly match a strictly ${gender} narrator.`;
+      ? `IMPORTANT: Write the dialouge in natural, conversational Hindi (Devanagari script). Mix in English words naturally (Hinglish). CRITICAL: Ensure you match the genders when rendering Hindi grammar. ${voice1} is ${gender1} and ${voice2} is ${gender2}. Never break this gender rule.`
+      : `Write the dialogue in natural, fluent English matching the styles of the voices.`;
 
-    const minWords = durationMinutes * 120;
-    const maxWords = durationMinutes * 150;
+    const minWords = durationMinutes * 160;
+    const maxWords = durationMinutes * 190;
 
     const attemptScriptGen = async (key: string) => {
       const ai = new GoogleGenAI({ apiKey: key });
       return await withGeminiRetry(() =>
         ai.models.generateContent({
           model: "gemini-2.5-flash",
-          contents: `You are a master TTS script director for Google Gemini's native audio model. Your scripts are vivid, emotionally rich, and highly performable.
+          contents: `You are an expert podcast scriptwriter. 
 
-Given a user's idea, generate a fully-formed, emotionally expressive TTS director-style script with ALL of these sections:
+Given a user's idea, write a highly engaging 2-person dialogue broadcast between two speakers.
 
-**# AUDIO PROFILE**
-Give the narrator/character a name and role (e.g., "Rajesh — Warm Storyteller / Fatherly Figure"). Define their personality, age, and speaking style briefly.
+**CRITICAL INSTRUCTIONS FOR FORMATTING:**
+You must strictly use the format "[VoiceName:" before each line, and "]" to close the line name. No other formatting. Do not output anything before the script. Do not output intro paragraphs or "Here is the script". Simply output the dialogue directly.
 
-**## THE SCENE**  
-Describe the physical environment, time of day, mood, and emotional atmosphere in 2–3 vivid sentences. This sets the stage for the performance.
+Example format:
+[Puck: Welcome back to the show, everyone. Today we have a great topic.]
+[Kore: I am so excited to dive into this. It's been on my mind all week.]
+[Puck: Me too.]
 
-**### DIRECTOR'S NOTES**  
-- **Style:** (e.g., Conversational, nostalgic, theatrical, suspenseful)
-- **Pace:** (e.g., Slow with dramatic pauses, energetic, measured)
-- **Accent:** (e.g., Warm baritone, London street accent, neutral American)
+DO NOT USE COLONS OR BRACKETS INSIDE THE ACTUAL SPOKEN TEXT. The only brackets should encase the speaker name and their line.
 
-**#### TRANSCRIPT**  
-Write ${minWords}–${maxWords} words of spoken text to explicitly target an engaging, precise ${durationMinutes}-minute audio performance. Heavily use inline emotion and performance tags:
-- [pause] — silence for dramatic effect
-- [whispers] — spoken very softly, intimately
-- [shouting] — raised, emotional voice
-- [excitedly] — energized delivery
-- [laughs] — brief laugh in the middle of speech
-- [sighs] — audible exhale, emotional
-- [softly] — gentle, tender tone
-- [slowly] — drawn out delivery
+Target length: ${minWords} to ${maxWords} words to fit a ${durationMinutes}-minute broadcast.
+Speaker 1 Name: ${voice1} (Gender: ${gender1})
+Speaker 2 Name: ${voice2} (Gender: ${gender2})
 
-Match the emotional journey of the user's idea. Use contrasting emotions (e.g., joy then sadness then resolve). The transcript should feel like a real human performance, not a reading.
-
+Make it dynamic, emotional, and performable. 
 ${langInstruction}
 
-User's idea: ${prompt}
-
-Return ONLY the formatted script. No commentary, no explanations.`,
+User's topic: ${prompt}`,
         })
       );
     };
@@ -136,7 +127,7 @@ Return ONLY the formatted script. No commentary, no explanations.`,
     } catch (err: any) {
       const msg = err?.message?.toLowerCase() || "";
       if (userApiKey && (msg.includes("denied access") || msg.includes("permission_denied") || msg.includes("api_key_invalid") || msg.includes("quota") || msg.includes("exceeded"))) {
-        console.warn("[Script Gen Fallback] User custom key failed (auth/quota). Falling back to server key.");
+        console.warn("[Broadcast Script Fallback] User custom key failed. Falling back to server key.");
         response = await attemptScriptGen(serverApiKey);
       } else {
         throw err;
@@ -146,28 +137,22 @@ Return ONLY the formatted script. No commentary, no explanations.`,
     const script = response.text;
 
     if (!script) {
-      return NextResponse.json({ error: "Failed to generate script" }, { status: 500 });
-    }
-
-    // Increment usage counter for free users
-    if (user.plan === "free") {
-      user.aiScriptCount += 1;
-      await user.save();
+      return NextResponse.json({ error: "Failed to generate broadcast script" }, { status: 500 });
     }
 
     return NextResponse.json({
       script,
       tokenUsage: response?.usageMetadata?.totalTokenCount || 0,
       usage: {
-        aiScriptCount: user.aiScriptCount,
+        broadcastCount: user.broadcastCount,
         plan: user.plan
       }
     });
 
   } catch (err: any) {
-    console.error("[Script Gen Error]", err);
+    console.error("[Broadcast Script Error]", err);
     const code = err?.code ?? "UNKNOWN";
-    const status = code === "OVERLOADED" ? 503 : 500;
+    const status = code === "OVERLOADED" ? 503 : code === "QUOTA_EXCEEDED" ? 429 : 500;
     return NextResponse.json(
       { error: err.message || "Something went wrong", code, retryAfter: err?.retryAfter },
       { status }

@@ -18,6 +18,7 @@ export interface IUser extends Document {
   // Usage counters
   directTtsCount: number;
   aiScriptCount: number;
+  broadcastCount: number;
   // Pro specific
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
@@ -50,6 +51,7 @@ const UserSchema = new Schema<IUser>(
     planStatus:        { type: String, enum: ["active", "expired", "none"], default: "none" },
     directTtsCount:    { type: Number, default: 0 },
     aiScriptCount:     { type: Number, default: 0 },
+    broadcastCount:    { type: Number, default: 0 },
     razorpayOrderId:   { type: String },
     razorpayPaymentId: { type: String },
     ownApiKey:         { type: String },

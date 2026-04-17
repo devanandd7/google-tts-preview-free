@@ -1,7 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy" });
+import { auth } from "@clerk/nextjs/server";
+import { connectDB } from "@/lib/mongodb";
+import User from "@/models/User";
+import { FREE_DIRECT_TTS_LIMIT } from "@/lib/constants";
 
 // Convert raw PCM from Gemini into a proper WAV file with header
 function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 16): Buffer {
@@ -29,11 +31,58 @@ function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 
 
 export async function POST(req: Request) {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    await connectDB();
+    let user = await User.findOne({ clerkId: userId });
+    
+    // Check if user is admin
+    const email = (user && user.email) ? user.email : "";
+    const authSession = await auth();
+    const sessionClaims = authSession.sessionClaims;
+    const currentEmail = email || (sessionClaims?.email as string) || (sessionClaims?.primaryEmail as string) || "";
+    const isAdmin = currentEmail === "devanandutkarsh7@gail.com" || currentEmail === "devanandutkarsh7@gmail.com";
+
+    if (!user) {
+      user = await User.create({ clerkId: userId, email: currentEmail, plan: isAdmin ? "pro" : "free" });
+    } else if (isAdmin && user.plan !== "pro") {
+      user.plan = "pro";
+      await user.save();
+    }
+
     const { script, voice = "Kore" } = await req.json();
 
     if (!script?.trim()) {
       return NextResponse.json({ error: "Missing script" }, { status: 400 });
     }
+
+    // ── Enforce limits ──
+    if (user.plan === "free") {
+      if (user.directTtsCount >= FREE_DIRECT_TTS_LIMIT) {
+        return NextResponse.json(
+          {
+            error: `Free plan limit reached (${FREE_DIRECT_TTS_LIMIT} direct TTS generations). Upgrade to Pro to get unlimited generations.`,
+            limitReached: true,
+            type: "direct",
+          },
+          { status: 403 }
+        );
+      }
+    } else {
+      // Pro user: use their own API key if set, otherwise fall back to server key
+      // (Pro users generate until their key is exhausted)
+    }
+
+    // Determine which API key to use
+    const apiKey =
+      user.plan === "pro" && user.ownApiKey
+        ? user.ownApiKey
+        : process.env.GEMINI_API_KEY!;
+
+    const ai = new GoogleGenAI({ apiKey });
 
     // Lookup gender of selected voice to lock it in the prompt
     const VOICE_GENDERS: Record<string, string> = {
@@ -48,7 +97,6 @@ export async function POST(req: Request) {
     };
     const gender = VOICE_GENDERS[voice] ?? "neutral";
 
-    // Prepend a strict voice-lock instruction so Gemini does NOT override the voice
     const lockedScript = `[VOICE OVERRIDE — STRICT: Use ONLY the prebuilt voice named "${voice}" (${gender}). Do NOT switch gender. Do NOT use any other voice. Render everything below as-is.]\n\n${script}`;
 
     const ttsResponse = await ai.models.generateContent({
@@ -70,10 +118,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Failed to generate audio — no audio data returned" }, { status: 500 });
     }
 
+    // Increment usage counter for free users
+    if (user.plan === "free") {
+      user.directTtsCount += 1;
+      await user.save();
+    }
+
     const pcmBuffer = Buffer.from(audioData, "base64");
     const wavBuffer = pcmToWav(pcmBuffer);
 
-    return NextResponse.json({ audioBase64: wavBuffer.toString("base64") });
+    return NextResponse.json({
+      audioBase64: wavBuffer.toString("base64"),
+      usage: {
+        directTtsCount: user.directTtsCount,
+        plan: user.plan,
+      },
+    });
   } catch (err: any) {
     console.error("[TTS Error]", err);
     return NextResponse.json({ error: err.message || "Something went wrong" }, { status: 500 });

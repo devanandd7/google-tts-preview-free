@@ -1,13 +1,27 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { UserButton } from "@clerk/nextjs";
+import { UserButton, useUser, useSession } from "@clerk/nextjs";
 import Link from "next/link";
+import Script from "next/script";
+
+// Extend window for Razorpay
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
 
 type Language = "hindi" | "english";
 
 type Mode = "direct" | "ai";
 type Stage = "input" | "review";
+
+interface UserProfile {
+  plan: "free" | "pro";
+  directTtsCount: number;
+  aiScriptCount: number;
+}
 
 const LANG_KEY = "voicegen_language";
 
@@ -112,6 +126,123 @@ export default function StudioPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [customKey, setCustomKey] = useState("");
+  const [keyLoading, setKeyLoading] = useState(false);
+  const [savingKey, setSavingKey] = useState(false);
+  const [customKeyError, setCustomKeyError] = useState("");
+  const [customKeySuccess, setCustomKeySuccess] = useState("");
+  const { user } = useUser();
+  const { useRazorpay, Razorpay } = require("react-razorpay");
+  const [RazorpayInstance, setRazorpayInstance] = useState<any>(null);
+
+  useEffect(() => {
+    if (Razorpay) {
+       setRazorpayInstance(Razorpay);
+    }
+  }, [Razorpay])
+
+  // Load profile
+  useEffect(() => {
+    fetchProfile();
+  }, [user]);
+
+  const fetchProfile = async () => {
+    try {
+      const res = await fetch("/api/user/profile");
+      if (res.ok) {
+        const data = await res.json();
+        setProfile(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleUpgrade = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const res = await fetch("/api/payment/create-order", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      if (RazorpayInstance) {
+          const options = {
+            key: data.keyId,
+            amount: data.amount,
+            currency: data.currency,
+            name: "VoiceGen AI",
+            description: "Pro Subscription (One-Time)",
+            order_id: data.orderId,
+            handler: async function (response: any) {
+              try {
+                const verifyRes = await fetch("/api/payment/verify", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_signature: response.razorpay_signature,
+                  }),
+                });
+                if (verifyRes.ok) {
+                  await fetchProfile();
+                  alert("Successfully upgraded to Pro!");
+                } else {
+                  alert("Payment verification failed.");
+                }
+              } catch (e) {
+                console.error(e);
+              }
+            },
+            prefill: {
+              email: user?.primaryEmailAddress?.emailAddress,
+            },
+            theme: {
+              color: "#4f46e5",
+            },
+          };
+
+          const rzp = new RazorpayInstance(options);
+          rzp.on("payment.failed", function (response: any) {
+            alert("Payment failed: " + response.error.description);
+          });
+          rzp.open();
+      } else {
+          setError("Payment system initializing, please wait");
+      }
+      
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveApiKey = async () => {
+    setSavingKey(true);
+    setCustomKeyError("");
+    setCustomKeySuccess("");
+    try {
+      const res = await fetch("/api/user/update-api-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: customKey }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setCustomKeySuccess("API key saved successfully!");
+      setCustomKey("");
+    } catch (err: any) {
+      setCustomKeyError(err.message);
+    } finally {
+      setSavingKey(false);
+    }
+  };
+
+
   const [audioHistory, setAudioHistory] = useState<AudioItem[]>([]);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
@@ -163,9 +294,18 @@ export default function StudioPage() {
         body: JSON.stringify({ prompt: text, language }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) {
+        if (data.limitReached) {
+            setError(data.error);
+            // Optionally could pop the settings or upgrade modal directly here.
+        }
+        throw new Error(data.error);
+      }
       setEditedScript(data.script);
       setStage("review");
+      if (data.usage) {
+          setProfile(prev => prev ? { ...prev, aiScriptCount: data.usage.aiScriptCount } : null);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -185,7 +325,10 @@ export default function StudioPage() {
         body: JSON.stringify({ script, voice }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) {
+         if (data.limitReached) setError(data.error);
+         throw new Error(data.error);
+      }
 
       const newItem: AudioItem = {
         id: Date.now().toString(),
@@ -195,6 +338,9 @@ export default function StudioPage() {
         createdAt: new Date(),
       };
       setAudioHistory(prev => [newItem, ...prev]);
+      if (data.usage) {
+          setProfile(prev => prev ? { ...prev, directTtsCount: data.usage.directTtsCount } : null);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -243,18 +389,43 @@ export default function StudioPage() {
             <span className="font-bold text-white tracking-tight">VoiceGen AI</span>
           </Link>
           <div className="flex items-center gap-3">
-            <span className="text-slate-500 text-sm hidden sm:block">Studio</span>
+            {profile && (
+               <div className="hidden sm:flex items-center gap-2 mr-2">
+                 {profile.plan === "pro" ? (
+                    <span className="px-3 py-1 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-bold rounded-full shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+                      PRO PLAN
+                    </span>
+                 ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 bg-slate-800 border border-slate-700 text-slate-300 text-xs font-medium rounded-full">
+                        Free: {profile.directTtsCount}/3 TTS · {profile.aiScriptCount}/2 AI Scripts
+                      </span>
+                      <button onClick={handleUpgrade} className="px-3 py-1 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-bold rounded-full transition-all shadow-lg active:scale-95">
+                        Upgrade (₹49)
+                      </button>
+                    </div>
+                 )}
+               </div>
+            )}
+            {profile?.plan === "pro" && (
+                <button onClick={() => setShowSettings(true)} className="p-2 mr-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors" title="Pro Settings">
+                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                     <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                   </svg>
+                </button>
+            )}
             <UserButton />
           </div>
         </div>
       </header>
 
       {/* BODY: LEFT SIDEBAR + RIGHT CREATOR */}
-      <div className="flex-1 flex overflow-hidden max-w-[1400px] w-full mx-auto">
+      <div className="flex-1 flex flex-col-reverse lg:flex-row overflow-hidden max-w-[1400px] w-full mx-auto">
 
         {/* ===== LEFT: AUDIO HISTORY SIDEBAR ===== */}
-        <aside className="w-[340px] shrink-0 border-r border-slate-800 flex flex-col bg-slate-950/60">
-          <div className="px-5 py-5 border-b border-slate-800 flex items-center justify-between">
+        <aside className="w-full lg:w-[340px] shrink-0 border-t lg:border-t-0 lg:border-r border-slate-800 flex flex-col bg-slate-950/60 h-[350px] lg:h-auto lg:max-h-full overflow-hidden">
+          <div className="px-5 py-5 border-b border-slate-800 flex items-center justify-between shrink-0">
             <div>
               <h2 className="text-sm font-bold text-white">Generated Audio</h2>
               <p className="text-xs text-slate-500 mt-0.5">Session clips · play or download</p>
@@ -356,7 +527,7 @@ export default function StudioPage() {
         </aside>
 
         {/* ===== RIGHT: CREATOR (always visible) ===== */}
-        <main className="flex-1 overflow-y-auto px-6 py-8 space-y-6 min-w-0">
+        <main className="flex-1 overflow-y-auto px-4 lg:px-6 py-6 lg:py-8 space-y-6 min-w-0">
           <div>
             <h1 className="text-2xl font-black text-white">Generation Studio</h1>
             <p className="text-slate-500 mt-1 text-sm">Write or generate a director-style script, pick a voice, produce audio.</p>
@@ -442,7 +613,7 @@ export default function StudioPage() {
 
               <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
                 {/* Step indicator */}
-                <div className="flex items-center gap-3 mb-1">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-1">
                   <span className={stepClass(true)}><span className={stepBubble(true, 1)}>1</span>Your Idea</span>
                   <span className="w-6 h-px bg-slate-800" />
                   <span className={stepClass(false)}><span className={stepBubble(false, 2)}>2</span>Review Script</span>
@@ -491,7 +662,7 @@ export default function StudioPage() {
             <div className="space-y-5">
               <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
                 {/* Step indicator */}
-                <div className="flex items-center gap-3 mb-1">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-1">
                   <span className={stepClass(false)}><span className={stepBubble(false, 1)}>1</span>Your Idea</span>
                   <span className="w-6 h-px bg-slate-800" />
                   <span className={stepClass(true)}><span className={stepBubble(true, 2)}>2</span>Review Script</span>
@@ -524,6 +695,44 @@ export default function StudioPage() {
           )}
         </main>
       </div>
+      {/* SETTINGS MODAL */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl relative">
+              <button 
+                onClick={() => setShowSettings(false)}
+                className="absolute top-4 right-4 p-1 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
+               >
+                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+              <h2 className="text-xl font-bold text-white mb-2">Pro Settings</h2>
+              <p className="text-slate-400 text-sm mb-6">As a Pro user, you can bring your own Gemini API key to override server limits.</p>
+              
+              <div className="space-y-4">
+                 <div>
+                    <label className="block text-sm font-semibold text-slate-300 mb-2">Custom Gemini API Key <span className="text-slate-500 font-normal">(Optional)</span></label>
+                    <input 
+                      type="password"
+                      value={customKey}
+                      onChange={e => setCustomKey(e.target.value)}
+                      placeholder="AIzaSy..."
+                      className="w-full bg-slate-800 border border-slate-700 focus:border-indigo-500 rounded-xl px-4 py-3 text-slate-200 outline-none text-sm transition-colors"
+                    />
+                 </div>
+                 {customKeyError && <ErrorBox message={customKeyError} />}
+                 {customKeySuccess && <div className="text-emerald-400 text-sm p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">{customKeySuccess}</div>}
+                 
+                 <button
+                    onClick={handleSaveApiKey}
+                    disabled={savingKey || !customKey}
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl transition-colors"
+                 >
+                    {savingKey ? "Saving..." : "Save API Key"}
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -544,7 +753,7 @@ function InlineVoiceGenRow({
   accentClass: string;
 }) {
   return (
-    <div className="flex items-center gap-3 pt-1">
+    <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-1">
       <div className="flex-1 min-w-0">
         <select
           value={voice}
@@ -566,7 +775,7 @@ function InlineVoiceGenRow({
       <button
         onClick={onGenerate}
         disabled={loading || disabled}
-        className={`shrink-0 flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r ${accentClass} disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-500 text-white font-bold text-sm rounded-xl transition-all shadow-lg disabled:shadow-none active:scale-[0.98] disabled:cursor-not-allowed`}
+        className={`w-full sm:w-auto shrink-0 flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r ${accentClass} disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-500 text-white font-bold text-sm rounded-xl transition-all shadow-lg disabled:shadow-none active:scale-[0.98] disabled:cursor-not-allowed`}
       >
         {loading ? (
           <><Spinner /></>

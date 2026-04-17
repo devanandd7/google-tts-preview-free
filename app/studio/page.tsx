@@ -18,7 +18,7 @@ declare global {
 
 type Language = "hindi" | "english";
 
-type Mode = "direct" | "ai" | "broadcast";
+type Mode = "direct" | "ai" | "broadcast" | "music";
 type Stage = "input" | "review";
 
 interface UserProfile {
@@ -139,6 +139,12 @@ export default function StudioPage() {
   const [voice, setVoice] = useState("Kore");
   const [voice1, setVoice1] = useState("Puck");
   const [voice2, setVoice2] = useState("Kore");
+
+  // Music State
+  const [musicPrompt, setMusicPrompt] = useState("");
+  const [musicLyrics, setMusicLyrics] = useState("");
+  const [musicDuration, setMusicDuration] = useState<"30s" | "full">("30s");
+  const [musicInstrumental, setMusicInstrumental] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
@@ -451,6 +457,69 @@ export default function StudioPage() {
     }
   };
 
+  const handleGenerateMusic = async () => {
+    if (!musicPrompt.trim()) return;
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/generate-music", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: musicPrompt,
+          lyrics: musicLyrics,
+          duration: musicDuration,
+          instrumental: musicInstrumental
+        }),
+      });
+      const data = await res.json();
+      
+      if (!res.ok) {
+        if (data.code === "UPGRADE_REQUIRED") {
+           toast.error(data.error, "Upgrade Required");
+           return;
+        }
+        if (data.code === "QUOTA_EXCEEDED") {
+          toast.error(
+            "Gemini API quota exceeded. Lyria Music generation consumes high request quotas. Please use your Custom API Key from Google AI Studio.",
+            "API Quota Exhausted"
+          );
+          setError(data.error || "Quota exceeded");
+          return;
+        }
+        throw new Error(data.error || "Generation error");
+      }
+
+      if (data.tokenUsage) {
+         setSessionTokens(prev => prev + data.tokenUsage);
+         toast.success(`Generated using ${data.tokenUsage.toLocaleString()} tokens`, "Live Token Usage");
+      }
+
+      const songDesc = musicInstrumental ? "[Instrumental Track]" : "[Vocal Track]";
+      const newItem: AudioItem = {
+        id: Date.now().toString(),
+        voice: `Lyria 3 (${musicDuration === "full" ? "Full Length" : "30s Clip"})`,
+        scriptPreview: `${songDesc} ${musicPrompt.slice(0, 80)}...`,
+        audioBase64: data.audioBase64,
+        createdAt: new Date(),
+      };
+      
+      setAudioHistory(prev => [newItem, ...prev]);
+      setSessionAudioRequests(prev => prev + 1);
+
+      toast.success("AI Music generated successfully! Play it from History.", "Track Ready");
+      setMusicPrompt("");
+      setMusicLyrics("");
+      
+    } catch (err: any) {
+      toast.error(err.message || "Failed to generate Music.", "Generation Failed");
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const togglePlay = (id: string) => {
     const el = audioRefs.current[id];
     if (!el) return;
@@ -724,6 +793,16 @@ export default function StudioPage() {
                 <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.829 1.58-1.936a4.5 4.5 0 001.31-.433m-1.5 2.56a12.12 12.12 0 01-3 0m4.5-2.56V15.75" /><path strokeLinecap="round" strokeLinejoin="round" d="M10.875 18v-.192c0-.983-.658-1.829-1.58-1.936a4.5 4.5 0 01-1.31-.433" /></svg>
                 AI Broadcast
               </button>
+              <button
+                onClick={() => handleModeSwitch("music")}
+                className={`flex items-center justify-center gap-2 px-6 h-11 min-w-[140px] rounded-lg text-sm font-semibold transition-all group relative overflow-hidden ${mode === "music" ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/20" : "text-slate-400 hover:text-white"
+                  }`}
+              >
+                {/* PRO Tag */}
+                <div className="absolute top-0 right-0 px-1 py-[1px] bg-amber-400 text-amber-950 text-[8px] font-black tracking-widest rounded-bl-sm">PRO</div>
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
+                AI Music
+              </button>
             </div>
 
             {/* LENGTH MODE */}
@@ -919,7 +998,29 @@ export default function StudioPage() {
 
           {/* ---- BROADCAST MODE — STEP 1: Idea ---- */}
           {mode === "broadcast" && stage === "input" && (
-            <div className="space-y-5">
+            <div className="space-y-5 relative">
+              {/* PRO GATE OVERLAY */}
+              {profile?.plan !== "pro" && (
+                <div className="absolute inset-x-0 -inset-y-4 z-20 flex flex-col items-center justify-center backdrop-blur-md bg-slate-950/60 rounded-3xl border border-white/5">
+                   <div className="bg-slate-900 border border-slate-700 p-8 rounded-2xl max-w-sm text-center shadow-2xl relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 blur-3xl rounded-full"></div>
+                      <div className="absolute bottom-0 left-0 w-32 h-32 bg-rose-500/10 blur-3xl rounded-full"></div>
+                      
+                      <div className="w-16 h-16 bg-gradient-to-tr from-pink-500 to-rose-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-[0_0_20px_rgba(236,72,153,0.3)]">
+                        <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                        </svg>
+                      </div>
+                      <h3 className="text-xl font-bold text-white mb-2">Unlock AI Broadcasts</h3>
+                      <p className="text-sm text-slate-400 mb-6 leading-relaxed">Create engaging 2-speaker podcast-style broadcasts with unique AI personalities and dialogue generation.</p>
+                      
+                      <button onClick={handleUpgrade} className="w-full py-3.5 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-400 hover:to-rose-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-pink-500/25 active:scale-95 flex items-center justify-center gap-2">
+                         <span>Go PRO (₹49/mo)</span>
+                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                      </button>
+                   </div>
+                </div>
+              )}
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Broadcast Ideas</p>
@@ -1021,7 +1122,20 @@ export default function StudioPage() {
 
           {/* ---- BROADCAST MODE — STEP 2: Review ---- */}
           {mode === "broadcast" && stage === "review" && (
-            <div className="space-y-5">
+            <div className="space-y-5 relative">
+              {/* PRO GATE OVERLAY (Safety Net) */}
+              {profile?.plan !== "pro" && (
+                <div className="absolute inset-x-0 -inset-y-4 z-20 flex flex-col items-center justify-center backdrop-blur-md bg-slate-950/60 rounded-3xl border border-white/5">
+                   <div className="bg-slate-900 border border-slate-700 p-8 rounded-2xl max-w-sm text-center shadow-2xl relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 blur-3xl rounded-full"></div>
+                      <div className="absolute bottom-0 left-0 w-32 h-32 bg-rose-500/10 blur-3xl rounded-full"></div>
+                      
+                      <button onClick={handleUpgrade} className="w-full py-3.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white font-bold rounded-xl transition-all shadow-lg">
+                         Go PRO (₹49/mo)
+                      </button>
+                   </div>
+                </div>
+              )}
               <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
                 <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-1">
                   <span className={`flex items-center gap-1.5 font-semibold text-xs text-slate-600`}><span className={`w-5 h-5 rounded-full flex items-center justify-center bg-slate-800 text-slate-500`}>1</span>Setup</span>
@@ -1059,6 +1173,131 @@ export default function StudioPage() {
               </div>
 
               {error && <ErrorBox message={error} />}
+            </div>
+          )}
+
+          {/* ---- MUSIC MODE ---- */}
+          {mode === "music" && (
+            <div className="space-y-5 relative">
+              {/* PRO GATE OVERLAY */}
+              {profile?.plan !== "pro" && (
+                <div className="absolute inset-x-0 -inset-y-4 z-20 flex flex-col items-center justify-center backdrop-blur-md bg-slate-950/60 rounded-3xl border border-white/5">
+                   <div className="bg-slate-900 border border-slate-700 p-8 rounded-2xl max-w-sm text-center shadow-2xl relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-3xl rounded-full"></div>
+                      <div className="absolute bottom-0 left-0 w-32 h-32 bg-teal-500/10 blur-3xl rounded-full"></div>
+                      
+                      <div className="w-16 h-16 bg-gradient-to-tr from-emerald-500 to-teal-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-[0_0_20px_rgba(16,185,129,0.3)]">
+                        <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
+                      </div>
+                      <h3 className="text-xl font-bold text-white mb-2">Unlock AI Music Studio</h3>
+                      <p className="text-sm text-slate-400 mb-6 leading-relaxed">Generate high-fidelity instrumental and lyrical music tracks using Google's <b>Lyria 3</b> Model. Up to 3 minutes of stereo audio.</p>
+                      
+                      <button onClick={handleUpgrade} className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-emerald-500/25 active:scale-95 flex items-center justify-center gap-2">
+                         <span>Go PRO (₹49/mo)</span>
+                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                      </button>
+                   </div>
+                </div>
+              )}
+
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Inspiration</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: "🎮 8-Bit Chiptune", prompt: "A bright chiptune melody in C Major, retro 8-bit video game style.", instr: true },
+                    { label: "🎸 Acoustic Roadtrip", prompt: "An upbeat, feel-good pop song in G major at 120 BPM with bright acoustic guitar strumming, claps.", instr: false },
+                    { label: "🌃 Lofi Hip Hop", prompt: "A lofi hip hop beat with dusty vinyl crackle, mellow Rhodes piano chords, a slow boom-bap drum pattern at 85 BPM.", instr: true },
+                    { label: "🎻 Cinematic Drama", prompt: "An epic cinematic orchestral piece building through sweeping strings and climaxing with a massive wall of sound.", instr: true }
+                  ].map(sp => (
+                    <button
+                      key={sp.label}
+                      onClick={() => {
+                        setMusicPrompt(sp.prompt);
+                        setMusicInstrumental(sp.instr);
+                      }}
+                      disabled={loading || profile?.plan !== "pro"}
+                      className="px-3 py-1.5 text-sm font-medium bg-slate-800/80 hover:bg-emerald-600/20 border border-slate-700 hover:border-emerald-500/50 text-slate-300 hover:text-emerald-300 rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {sp.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-5 relative">
+                <div>
+                  <label className="flex items-center justify-between text-sm font-semibold text-slate-300 mb-2">
+                    Musical Style / Vibe (Required)
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="checkbox" 
+                        id="instrumental"
+                        checked={musicInstrumental}
+                        onChange={(e) => setMusicInstrumental(e.target.checked)}
+                        className="w-4 h-4 rounded text-emerald-600 bg-slate-800 border-slate-700 outline-none focus:ring-emerald-600 focus:ring-2 focus:ring-offset-slate-900"
+                      />
+                      <label htmlFor="instrumental" className="text-xs font-medium text-slate-400 cursor-pointer hover:text-slate-300">Instrumental Only (No Vocals)</label>
+                    </div>
+                  </label>
+                  <textarea
+                     rows={3}
+                     value={musicPrompt}
+                     onChange={e => setMusicPrompt(e.target.value)}
+                     placeholder="e.g., A dark atmospheric trap beat at 140 BPM with heavy 808 bass, eerie synth pads, sharp hi-hats..."
+                     className="w-full bg-slate-800/80 border border-slate-700 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 rounded-xl px-4 py-3 text-slate-200 placeholder:text-slate-600 outline-none transition-all text-sm resize-none leading-relaxed"
+                  />
+                </div>
+
+                {!musicInstrumental && (
+                  <div>
+                    <label className="flex items-center justify-between text-sm font-semibold text-slate-300 mb-2">
+                      Custom Lyrics (Optional)
+                      <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded ml-2">Tip: Use [Verse] and [Chorus] tags</span>
+                    </label>
+                    <textarea
+                      rows={5}
+                      value={musicLyrics}
+                      onChange={e => setMusicLyrics(e.target.value)}
+                      placeholder={`[Verse 1]\nWalking through the neon glow...\n\n[Chorus]\nWe are the echoes in the night...`}
+                      className="w-full bg-slate-800/80 border border-slate-700 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 rounded-xl px-4 py-3 text-slate-200 placeholder:text-slate-600 outline-none transition-all font-mono text-sm resize-y leading-relaxed min-h-[100px]"
+                    />
+                    <p className="text-xs text-slate-500 mt-2">Leave blank to let AI write the lyrics automatically based on your vibe.</p>
+                  </div>
+                )}
+
+                <div className="pt-2">
+                  <label className="block text-sm font-semibold text-slate-300 mb-3">Model & Duration Options</label>
+                  <div className="grid grid-cols-2 gap-3">
+                     <label className={`relative p-4 rounded-xl border-2 flex flex-col items-center justify-center cursor-pointer transition-all ${musicDuration === "30s" ? "border-emerald-500 bg-emerald-500/10" : "border-slate-800 bg-slate-900/50 hover:bg-slate-800/80"}`}>
+                        <input type="radio" value="30s" checked={musicDuration === "30s"} onChange={() => setMusicDuration("30s")} className="sr-only" />
+                        <span className={`text-base font-bold mb-1 ${musicDuration === "30s" ? "text-emerald-400" : "text-slate-300"}`}>30s Clip</span>
+                        <span className="text-xs text-slate-500">lyria-3-clip-preview</span>
+                     </label>
+                     <label className={`relative p-4 rounded-xl border-2 flex flex-col items-center justify-center cursor-pointer transition-all ${musicDuration === "full" ? "border-emerald-500 bg-emerald-500/10" : "border-slate-800 bg-slate-900/50 hover:bg-slate-800/80"}`}>
+                        <input type="radio" value="full" checked={musicDuration === "full"} onChange={() => setMusicDuration("full")} className="sr-only" />
+                        <span className={`text-base font-bold mb-1 ${musicDuration === "full" ? "text-emerald-400" : "text-slate-300"}`}>Full Track</span>
+                        <span className="text-xs text-slate-500 text-center">lyria-3-pro-preview<br/>(Slow!)</span>
+                     </label>
+                  </div>
+                </div>
+              </div>
+
+              {error && <ErrorBox message={error} />}
+
+              <button
+                onClick={() => handleGenerateMusic()}
+                disabled={loading || !musicPrompt.trim() || profile?.plan !== "pro"}
+                className="w-full flex items-center justify-center gap-3 py-4 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-emerald-500/20 disabled:shadow-none active:scale-[0.98] disabled:cursor-not-allowed"
+              >
+                {loading ? <><Spinner /> Composing Audio Track…</> : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
+                    Generate AI Music
+                  </>
+                )}
+              </button>
             </div>
           )}
         </main>

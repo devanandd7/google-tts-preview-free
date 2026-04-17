@@ -72,17 +72,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing required parameters" }, { status: 400 });
     }
 
-    if (user.plan === "free") {
-      if (user.broadcastCount >= FREE_BROADCAST_LIMIT) {
-        return NextResponse.json(
-          {
-            error: `Free plan limit reached (${FREE_BROADCAST_LIMIT} Broadcasts). Upgrade to Pro to get unlimited generations.`,
-            limitReached: true,
-            type: "broadcast",
-          },
-          { status: 403 }
-        );
-      }
+    // STRICT PRO ONLY GATE
+    if (user.plan !== "pro") {
+      return NextResponse.json(
+        {
+          error: "AI Broadcast features are available for PRO plan users only.",
+          code: "UPGRADE_REQUIRED",
+        },
+        { status: 403 }
+      );
     }
 
     const userApiKey = user.plan === "pro" && user.ownApiKey ? decrypt(user.ownApiKey) : null;

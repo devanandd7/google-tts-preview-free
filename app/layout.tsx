@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Outfit, Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Toaster } from "./components/Toaster";
+import Script from "next/script";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -32,6 +33,12 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <body className="min-h-full flex flex-col">
+          {/* Razorpay SDK — loaded globally so it is always ready before payment */}
+          <Script
+            id="razorpay-sdk"
+            src="https://checkout.razorpay.com/v1/checkout.js"
+            strategy="beforeInteractive"
+          />
           {children}
           <Toaster />
         </body>

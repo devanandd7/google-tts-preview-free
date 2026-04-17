@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
+import { encrypt } from "@/lib/encryption";
 
 export async function POST(req: Request) {
   try {
@@ -19,7 +20,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Only Pro users can add an API key" }, { status: 403 });
     }
 
-    user.ownApiKey = apiKey?.trim() || "";
+    // Encrypt before saving if present
+    const rawKey = apiKey?.trim() || "";
+    user.ownApiKey = rawKey ? encrypt(rawKey) : "";
     await user.save();
 
     return NextResponse.json({ success: true });

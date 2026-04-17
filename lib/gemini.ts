@@ -11,6 +11,10 @@ export function isOverloadError(err: any): boolean {
   const msg: string = (err?.message || err?.toString() || "").toLowerCase();
   const status = err?.status ?? err?.code;
 
+  if (msg.includes("exceeded your current quota") || msg.includes("quota exceeded for metric")) {
+    return false; // Hard quota limit, do not retry
+  }
+
   return (
     status === 503 ||
     status === 429 ||
@@ -62,6 +66,15 @@ export async function withGeminiRetry<T>(fn: () => Promise<T>): Promise<T> {
 
 /** Converts raw Gemini errors into user-friendly, front-end readable errors */
 export function classifyGeminiError(err: any, exhausted = false): Error {
+  const msg: string = err?.message || err?.toString() || "Unknown error";
+
+  // Check for hard quota limit first
+  if (msg.toLowerCase().includes("exceeded your current quota") || msg.toLowerCase().includes("quota exceeded for metric")) {
+    const e = new Error("Gemini API quota exceeded. Free tier limit for this model is full. Please check your AI Studio billing or upgrade your API tier.");
+    (e as any).code = "QUOTA_EXCEEDED";
+    return e;
+  }
+
   if (exhausted || isOverloadError(err)) {
     const e = new Error(
       "Gemini is currently experiencing high demand. We retried automatically but the service is still overloaded. Please wait 30–60 seconds and try again."
@@ -70,8 +83,6 @@ export function classifyGeminiError(err: any, exhausted = false): Error {
     (e as any).retryAfter = 30;
     return e;
   }
-
-  const msg: string = err?.message || err?.toString() || "Unknown error";
 
   if (msg.toLowerCase().includes("api_key") || msg.toLowerCase().includes("api key")) {
     const e = new Error("Invalid or missing Gemini API key. Please check your key in Pro Settings.");

@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
 // In-memory rate limiting map: { userId: { count, resetTime } }
-// Note: Normally you'd use Redis for this in production. Let's use a simple memory cache for now.
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 const MAX_ATTEMPTS_PER_HOUR = 5;
 
-// Cleanup old entries every so often to avoid memory leaks
+// Cleanup old entries hourly to avoid memory leaks
 setInterval(() => {
     const now = Date.now();
     for (const [key, value] of rateLimitMap.entries()) {
@@ -15,7 +14,7 @@ setInterval(() => {
             rateLimitMap.delete(key);
         }
     }
-}, 60 * 60 * 1000); // Check hourly
+}, 60 * 60 * 1000);
 
 export async function POST(req: Request) {
     try {
@@ -24,12 +23,12 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        // Rate Limiting Logic
+        // Rate Limiting
         const now = Date.now();
         let userLimit = rateLimitMap.get(userId);
 
         if (!userLimit || now > userLimit.resetTime) {
-            userLimit = { count: 0, resetTime: now + 60 * 60 * 1000 }; // 1 hour from now
+            userLimit = { count: 0, resetTime: now + 60 * 60 * 1000 };
         }
 
         if (userLimit.count >= MAX_ATTEMPTS_PER_HOUR) {
@@ -44,31 +43,48 @@ export async function POST(req: Request) {
 
         const { apiKey } = await req.json();
 
-        if (!apiKey) {
+        if (!apiKey?.trim()) {
             return NextResponse.json({ valid: false, error: "API key is required" }, { status: 400 });
         }
 
-        // Lightweight test call to Google TTS API
+        // Use same @google/genai SDK as the rest of the app — supports both AQ. and AIzaSy keys
         try {
-            const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" }); // Use a fast/cheap model to test
-
-            // Just a tiny prompt to verify the key
-            await model.generateContent("Test");
-
+            const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
+            await ai.models.generateContent({
+                model: "gemini-2.0-flash",
+                contents: "hi",
+            });
             return NextResponse.json({ valid: true });
         } catch (apiError: any) {
-            console.error("API Key Validation Error:", apiError.message);
-            // Determine if it's an auth error vs something else
-            let errorMsg = "Invalid API Key or API error.";
-            if (apiError.message?.includes('API key not valid')) {
-                errorMsg = "API key not valid. Please check and try again.";
+            const msg: string = (apiError?.message || "").toLowerCase();
+
+            // Quota exceeded = key IS valid, just at its daily limit
+            if (msg.includes("quota") || msg.includes("exceeded") || msg.includes("resource_exhausted") || apiError?.status === 429) {
+                return NextResponse.json({ valid: true });
             }
-            return NextResponse.json({ valid: false, error: errorMsg }, { status: 400 });
+
+            // Auth/key errors = key is genuinely invalid
+            if (
+                msg.includes("api key not valid") ||
+                msg.includes("api_key_invalid") ||
+                msg.includes("invalid api key") ||
+                msg.includes("permission_denied") ||
+                apiError?.status === 401 ||
+                apiError?.status === 403
+            ) {
+                return NextResponse.json(
+                    { valid: false, error: "Invalid API key. Please check and try again." },
+                    { status: 400 }
+                );
+            }
+
+            // Unknown error — assume valid (don't block user)
+            console.warn("[validate-key] Unexpected error during validation:", apiError.message);
+            return NextResponse.json({ valid: true });
         }
 
     } catch (err: any) {
-        console.error("Validation Route Error:", err);
+        console.error("[validate-key] Route error:", err);
         return NextResponse.json({ valid: false, error: "Internal Server Error" }, { status: 500 });
     }
 }

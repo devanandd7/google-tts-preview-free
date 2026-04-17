@@ -326,6 +326,14 @@ export default function StudioPage() {
           setError(data.error);
           return;
         }
+        if (data.code === "QUOTA_EXCEEDED") {
+          toast.error(
+            "The Gemini API key being used has hit its daily free-tier limit. Please add a valid Gemini API key from aistudio.google.com in your Pro Settings.",
+            "API Quota Exhausted"
+          );
+          setError(data.error);
+          return;
+        }
         if (data.code === "OVERLOADED" || res.status === 503) {
           toast.overloaded(data.retryAfter ?? 30);
           return;
@@ -359,6 +367,14 @@ export default function StudioPage() {
       const data = await res.json();
       if (!res.ok) {
         if (data.limitReached) {
+          setError(data.error);
+          return;
+        }
+        if (data.code === "QUOTA_EXCEEDED") {
+          toast.error(
+            "The Gemini API key being used has hit its daily free-tier limit (10 requests/day). The server key is also exhausted. Please update GEMINI_API_KEY in .env.local with a fresh Gemini API key from aistudio.google.com.",
+            "API Quota Exhausted"
+          );
           setError(data.error);
           return;
         }
@@ -922,7 +938,7 @@ export default function StudioPage() {
                       type="password"
                       value={customKey}
                       onChange={e => setCustomKey(e.target.value)}
-                      placeholder={profile?.hasOwnApiKey ? "•••••••••••••••••••••••• (Set)" : "AIzaSy..."}
+                      placeholder={profile?.hasOwnApiKey ? "•••••••••••••••••••••••• (Set)" : "AQ.Ab8... or AIzaSy..."}
                       className="w-full bg-slate-950/50 border border-slate-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 rounded-xl px-4 py-3 text-slate-200 outline-none text-sm transition-all shadow-inner"
                     />
                   </div>

@@ -92,7 +92,7 @@ export async function POST(req: Request) {
       const ai = new GoogleGenAI({ apiKey: key });
       return await withGeminiRetry(() =>
         ai.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: "gemini-2.5-flash",
           contents: `You are a master TTS script director for Google Gemini's native audio model. Your scripts are vivid, emotionally rich, and highly performable.
 
 Given a user's idea, generate a fully-formed, emotionally expressive TTS director-style script with ALL of these sections:
@@ -135,8 +135,8 @@ Return ONLY the formatted script. No commentary, no explanations.`,
       response = await attemptScriptGen(userApiKey || serverApiKey);
     } catch (err: any) {
       const msg = err?.message?.toLowerCase() || "";
-      if (userApiKey && (msg.includes("denied access") || msg.includes("permission_denied") || msg.includes("api_key_invalid"))) {
-        console.warn("[Script Gen Fallback] User custom key denied access. Falling back to server key.");
+      if (userApiKey && (msg.includes("denied access") || msg.includes("permission_denied") || msg.includes("api_key_invalid") || msg.includes("quota") || msg.includes("exceeded"))) {
+        console.warn("[Script Gen Fallback] User custom key failed (auth/quota). Falling back to server key.");
         response = await attemptScriptGen(serverApiKey);
       } else {
         throw err;

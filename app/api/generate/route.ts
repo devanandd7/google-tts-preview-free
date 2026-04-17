@@ -158,8 +158,8 @@ export async function POST(req: Request) {
         ttsResponse = await attemptTTS(activeKey, lockedChunk);
       } catch (err: any) {
         const msg = err?.message?.toLowerCase() || "";
-        if (activeKey === userApiKey && (msg.includes("denied access") || msg.includes("permission_denied") || msg.includes("api_key_invalid"))) {
-          console.warn("[TTS Fallback] User custom key denied access. Falling back to server key.");
+        if (activeKey === userApiKey && (msg.includes("denied access") || msg.includes("permission_denied") || msg.includes("api_key_invalid") || msg.includes("quota") || msg.includes("exceeded"))) {
+          console.warn("[TTS Fallback] User custom key failed (auth/quota). Falling back to server key.");
           activeKey = serverApiKey;
           ttsResponse = await attemptTTS(activeKey, lockedChunk);
         } else {
@@ -191,7 +191,7 @@ export async function POST(req: Request) {
   } catch (err: any) {
     console.error("[TTS Error]", err);
     const code = err?.code ?? "UNKNOWN";
-    const status = code === "OVERLOADED" ? 503 : 500;
+    const status = code === "OVERLOADED" ? 503 : code === "QUOTA_EXCEEDED" ? 429 : 500;
     return NextResponse.json(
       { error: err.message || "Something went wrong", code, retryAfter: err?.retryAfter },
       { status }

@@ -27,47 +27,16 @@ async function checkAndExpirePlan(user: any) {
 
 export async function GET() {
   try {
-    const { userId, sessionClaims } = await auth();
-    console.log("[Profile Debug] userId:", userId, "email:", sessionClaims?.email || sessionClaims?.primaryEmail);
+    const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    const email =
-      (sessionClaims?.email as string) ||
-      (sessionClaims?.primaryEmail as string) ||
-      "";
-    const isAdmin = ADMIN_EMAILS.includes(email);
 
     await connectDB();
     let user = await User.findOne({ clerkId: userId });
 
     if (!user) {
-      // First visit — auto-create record
-      user = await User.create({
-        clerkId: userId,
-        email,
-        plan: isAdmin ? "pro" : "free",
-        planStatus: isAdmin ? "active" : "none",
-        planActivatedAt: isAdmin ? new Date() : undefined,
-        planExpiresAt: isAdmin
-          ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // admin gets 1-year
-          : undefined,
-      });
-    } else {
-      // Ensure admin is always pro
-      const currentEmail = email || user.email || "";
-      if (ADMIN_EMAILS.includes(currentEmail) && user.plan !== "pro") {
-        user.plan = "pro";
-        user.planStatus = "active";
-        if (!user.planExpiresAt) {
-          user.planExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
-        }
-        await user.save();
-      } else {
-        // Auto-expire check for non-admins
-        await checkAndExpirePlan(user);
-      }
+      return NextResponse.json({ error: "User record not found in database. Please try generating something first." }, { status: 404 });
     }
 
     // Reset daily counters if a new day has started (UTC)

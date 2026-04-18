@@ -43,7 +43,7 @@ async function testOneTTS(text, voiceName = "Puck", label = "") {
 async function main() {
   console.log("=".repeat(60));
   console.log(" GenBox TTS Diagnostic");
-  console.log(`  Key: ${API_KEY.slice(0,14)}... (${API_KEY.startsWith("AIzaSy") ? "✅ VALID FORMAT" : "❌ INVALID FORMAT"})`);
+  console.log(`  Key: ${API_KEY.slice(0,14)}... (${(API_KEY.startsWith("AIzaSy") || API_KEY.startsWith("AQ.")) ? "✅ VALID FORMAT" : "❌ INVALID FORMAT"})`);
   console.log("=".repeat(60));
 
   // Step 1: Check text model

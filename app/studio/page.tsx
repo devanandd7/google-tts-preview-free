@@ -165,6 +165,7 @@ export default function StudioPage() {
   const [sessionAudioRequests, setSessionAudioRequests] = useState(0);
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [hasMounted, setHasMounted] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showProSidebarMobile, setShowProSidebarMobile] = useState(false);
   const [customKey, setCustomKey] = useState("");
@@ -176,7 +177,10 @@ export default function StudioPage() {
   const { user } = useUser();
 
   // Load profile on mount and whenever user changes
-  useEffect(() => { fetchProfile(); }, [user]);
+  useEffect(() => { 
+    setHasMounted(true);
+    fetchProfile(); 
+  }, [user]);
 
   const fetchProfile = async () => {
     try {
@@ -586,31 +590,35 @@ export default function StudioPage() {
     if (playingId === id) setPlayingId(null);
   };
 
-  const formatTime = (d: Date) =>
-    d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const formatTime = (d: Date) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const isBroadcastLimited = profile?.plan !== 'pro' && !profile?.hasOwnApiKey;
+  const broadcastReached = isBroadcastLimited && (profile?.broadcastCount || 0) >= 1;
+
 
   const [activeMobileColumn, setActiveMobileColumn] = useState<"vault" | "stage" | "command">("stage");
+
+  if (!hasMounted) return null;
 
   return (
     <div className="h-[100dvh] w-full flex flex-col bg-[#050505] selection:bg-indigo-500/30 overflow-hidden">
       {/* --- PREMIUM HEADER --- */}
-      <header className="h-16 shrink-0 border-b border-white/[0.05] bg-black/40 backdrop-blur-3xl sticky top-0 z-[100] px-4 md:px-8">
+      <header className="h-20 shrink-0 border-b border-indigo-500/20 bg-[#0a0f1f]/95 backdrop-blur-3xl sticky top-0 z-[100] px-4 md:px-8 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
         <div className="h-full flex items-center justify-between">
           <div className="flex items-center gap-4 md:gap-8">
             <Link href="/" className="flex items-center gap-3 group">
               <div className="flex flex-col">
-                <span className="font-black text-white tracking-tighter text-2xl leading-tight uppercase">GenBox</span>
-                <span className="text-[10px] text-indigo-400 font-bold tracking-[0.2em] uppercase leading-none">Generative Production Studio</span>
+                <span className="font-black text-white tracking-tighter text-3xl leading-tight uppercase group-hover:text-indigo-400 transition-colors">GenBox</span>
+                <span className="text-xs text-indigo-300 font-bold tracking-[0.2em] uppercase leading-none">Generative Production Studio</span>
               </div>
             </Link>
           </div>
 
           <div className="hidden xl:flex items-center gap-4">
-             <Link href="/blog" className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-all">
+             <Link href="/blog" className="text-sm font-black uppercase tracking-widest text-indigo-100/70 hover:text-white transition-all">
                Blogs
              </Link>
-             <button onClick={() => setShowSettings(true)} className="px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white hover:bg-white/5 transition-all flex items-center gap-2">
-               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+             <button onClick={() => setShowSettings(true)} className="px-4 py-2 rounded-lg text-sm font-black uppercase tracking-widest text-indigo-100/70 hover:text-white hover:bg-white/5 transition-all flex items-center gap-2">
+               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                Settings
              </button>
           </div>
@@ -622,27 +630,27 @@ export default function StudioPage() {
                   <div className="flex items-center gap-4 bg-white/[0.02] border border-white/[0.05] pl-4 pr-1 py-1 rounded-2xl">
                     <div className="flex items-center gap-2 pr-3">
                       <div className="flex flex-col items-end border-r border-white/10 pr-4 mr-1">
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Broadcast</span>
-                        <span className="text-xs font-mono text-pink-400 font-bold">{profile.broadcastCount || 0}/1</span>
+                        <span className="text-[11px] font-bold text-indigo-300/60 uppercase tracking-widest">Broadcast</span>
+                        <span className="text-sm font-mono text-pink-400 font-bold">{Math.min(profile.broadcastCount || 0, 1)}/1</span>
                       </div>
                       <div className="flex flex-col items-end">
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Session</span>
-                        <span className="text-xs font-mono text-white font-bold">{sessionTokens.toLocaleString()} tkn</span>
+                        <span className="text-[11px] font-bold text-indigo-300/60 uppercase tracking-widest">Session</span>
+                        <span className="text-sm font-mono text-white font-bold">{sessionTokens.toLocaleString()} tkn</span>
                       </div>
                     </div>
                   </div>
                 ) : (
                   <div className="flex items-center gap-4">
                     <div className="flex flex-col items-end hidden lg:flex">
-                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Free Account</span>
+                       <span className="text-[12px] font-bold text-indigo-300/70 uppercase tracking-widest">Free Account</span>
                        <div className="flex items-center gap-2">
-                         <span className="text-xs font-mono text-white/70">{profile.directTtsCount}/3 TTS</span>
+                         <span className="text-sm font-mono text-white/70">{profile.directTtsCount}/3 TTS</span>
                          <span className="text-white/20">|</span>
-                         <span className="text-xs font-mono text-pink-400/80">{profile.broadcastCount || 0}/1 BC</span>
+                         <span className="text-sm font-mono text-pink-400/80">{Math.min(profile.broadcastCount || 0, 1)}/1 BC</span>
                        </div>
                     </div>
                     {/* Hide upgrade button if they are already pro, but if they are here they aren't pro */}
-                    <button onClick={handleUpgrade} className="px-5 py-2.5 bg-white text-black text-[11px] font-black rounded-xl hover:bg-indigo-400 hover:text-white transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] active:scale-95 uppercase tracking-widest">
+                    <button onClick={handleUpgrade} className="px-6 py-3 bg-white text-black text-sm font-black rounded-xl hover:bg-indigo-400 hover:text-white transition-all shadow-[0_0_30px_rgba(79,70,229,0.3)] active:scale-95 uppercase tracking-widest">
                       Upgrade Studio
                     </button>
                   </div>
@@ -1039,10 +1047,13 @@ export default function StudioPage() {
                               </div>
                               <button
                                 onClick={() => handleGenerateScript()}
-                                disabled={loading || !userIdea.trim() || voice1 === voice2}
-                                className="w-full md:w-auto h-14 px-10 bg-pink-600 text-white font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl hover:bg-pink-500 transition-all shadow-xl shadow-pink-600/20 disabled:opacity-30"
+                                disabled={loading || !userIdea.trim() || voice1 === voice2 || broadcastReached}
+                                className={`w-full md:w-auto h-14 px-10 font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-xl shadow-pink-600/20 
+                                  ${broadcastReached 
+                                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50' 
+                                    : 'bg-pink-600 text-white hover:bg-pink-500 active:scale-95 disabled:opacity-30'}`}
                               >
-                                {loading ? <Spinner /> : 'Design Dialogue'}
+                                {loading ? <Spinner /> : broadcastReached ? 'Broadcast Limit Reached' : 'Design Dialogue'}
                               </button>
                            </div>
                         </div>
@@ -1060,10 +1071,13 @@ export default function StudioPage() {
                           />
                           <button
                             onClick={handleGenerateAudio}
-                            disabled={audioLoading || !editedScript.trim()}
-                            className="w-full h-14 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-pink-600/20 flex items-center justify-center gap-3"
+                            disabled={audioLoading || !editedScript.trim() || broadcastReached}
+                            className={`w-full h-14 font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-pink-600/20 flex items-center justify-center gap-3
+                              ${broadcastReached 
+                                ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50' 
+                                : 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white active:scale-95 disabled:opacity-30'}`}
                           >
-                            {audioLoading ? <Spinner /> : 'Produce Broadcast Master'}
+                            {audioLoading ? <Spinner /> : broadcastReached ? 'Broadcast Limit Reached' : 'Produce Broadcast Master'}
                           </button>
                         </div>
                       )}

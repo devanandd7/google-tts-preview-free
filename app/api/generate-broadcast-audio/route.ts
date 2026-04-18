@@ -30,106 +30,103 @@ function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 
   return buffer;
 }
 
-// ─── Text Chunker (max chars per chunk) ──────────────────────────────────────
-function chunkText(text: string, maxLen: number = 2500): string[] {
-  if (text.length <= maxLen) return [text];
+// ─── Script Cleaner ───────────────────────────────────────────────────────────
+// Converts [Puck: text with [expression] tags] → "Puck: text with expression tags"
+// Multi-speaker TTS needs clean "Speaker: text" lines — no outer brackets.
+function cleanScriptForMultiSpeaker(script: string, voice1: string, voice2: string): string {
+  const EXPRESSION_TAGS = [
+    "laughs", "chuckles", "nervous laugh", "excitedly", "softly", "nervously",
+    "sighs", "surprised", "seriously", "warmly", "sadly", "angrily", "proudly",
+    "slowly", "quickly", "whispers", "pause", "long pause", "silence",
+  ];
 
-  const chunks: string[] = [];
-  // Split on sentence boundaries first
-  const sentences = text.match(/[^.!?।]+[.!?।]*/g) || [text];
-  let current = "";
-
-  for (const sentence of sentences) {
-    if ((current + sentence).length > maxLen) {
-      if (current.trim()) chunks.push(current.trim());
-      // If a single sentence exceeds maxLen, hard-split it
-      if (sentence.length > maxLen) {
-        let remaining = sentence;
-        while (remaining.length > maxLen) {
-          chunks.push(remaining.slice(0, maxLen).trim());
-          remaining = remaining.slice(maxLen);
-        }
-        current = remaining;
-      } else {
-        current = sentence;
-      }
-    } else {
-      current += sentence;
-    }
-  }
-  if (current.trim()) chunks.push(current.trim());
-  return chunks.length ? chunks : [text];
-}
-
-// ─── Robust Script Line Parser ────────────────────────────────────────────────
-// Parses lines like: [VoiceName: spoken text here]
-// Uses first-colon-only split to avoid breaking on colons in text
-function parseBroadcastScript(
-  script: string,
-  voice1: string,
-  voice2: string
-): { voiceName: string; text: string }[] {
-  const blocks: { voiceName: string; text: string }[] = [];
+  const lines: string[] = [];
 
   for (const rawLine of script.split("\n")) {
     const line = rawLine.trim();
     if (!line.startsWith("[")) continue;
 
-    // Find FIRST colon — everything before is the name, after is text
     const colonIdx = line.indexOf(":");
     if (colonIdx === -1) continue;
 
     const rawName = line.slice(1, colonIdx).trim();
 
-    // Guard: expression tags like [laughs: ha ha] could appear if LLM formats them oddly.
-    // Only skip lines where the "name" before colon is clearly NOT a speaker voice name.
-    const EXPRESSION_TAGS = ["laughs","chuckles","nervous laugh","excitedly","softly",
-      "nervously","sighs","surprised","seriously","warmly","sadly","angrily","proudly",
-      "slowly","quickly","whispers"];
-    const isExpressionTag = EXPRESSION_TAGS.some(tag =>
-      rawName.toLowerCase() === tag
-    );
-    if (isExpressionTag) continue; // Skip — not a speaker line
+    // Skip expression-only lines like [laughs: ...]
+    const isExprTag = EXPRESSION_TAGS.some(tag => rawName.toLowerCase() === tag);
+    if (isExprTag) continue;
 
-    // Remove trailing ] and any surrounding whitespace from the text
-    const rawText = line
+    // Match speaker
+    const isV2 = rawName.toLowerCase().includes(voice2.toLowerCase());
+    const isV1 = rawName.toLowerCase().includes(voice1.toLowerCase());
+    const speaker = isV2 && !isV1 ? voice2 : isV1 ? voice1 : null;
+    if (!speaker) continue;
+
+    // Extract spoken text — strip outer trailing ] and clean inline [expression] tags
+    let text = line
       .slice(colonIdx + 1)
-      .replace(/\]\s*$/, "")
+      .replace(/\]\s*$/, "")  // remove trailing ]
       .trim();
 
-    if (!rawText) continue;
+    // Strip inline expression tags like [laughs] [excitedly] but keep their surrounding text
+    text = text.replace(/\[(laughs|chuckles|nervous laugh|excitedly|softly|nervously|sighs|surprised|seriously|warmly|sadly|angrily|proudly|slowly|quickly|whispers|pause|long pause|silence|\.\.\.)\]/gi, "").trim();
+    // Collapse extra whitespace
+    text = text.replace(/\s{2,}/g, " ").trim();
 
-    // Match speaker to voice1 or voice2 (case-insensitive partial match)
-    const isVoice2 = rawName.toLowerCase().includes(voice2.toLowerCase());
-    const isVoice1 = rawName.toLowerCase().includes(voice1.toLowerCase());
-    let voiceName: string;
+    if (!text) continue;
 
-    if (isVoice2 && !isVoice1) {
-      voiceName = voice2;
-    } else if (isVoice1) {
-      voiceName = voice1;
+    lines.push(`${speaker}: ${text}`);
+  }
+
+  if (lines.length === 0) {
+    console.warn("[Broadcast] cleanScript produced 0 lines — using raw script as fallback");
+    return script;
+  }
+
+  return lines.join("\n");
+}
+
+// ─── Fallback: Batch by Speaker (2 requests total) ───────────────────────────
+// Groups all lines per speaker, sends 2 parallel TTS requests, then interleaves.
+function groupBySpeaker(
+  script: string,
+  voice1: string,
+  voice2: string
+): { v1Lines: { idx: number; text: string }[]; v2Lines: { idx: number; text: string }[] } {
+  const EXPRESSION_TAGS = [
+    "laughs", "chuckles", "nervous laugh", "excitedly", "softly", "nervously",
+    "sighs", "surprised", "seriously", "warmly", "sadly", "angrily", "proudly",
+    "slowly", "quickly", "whispers",
+  ];
+
+  const v1Lines: { idx: number; text: string }[] = [];
+  const v2Lines: { idx: number; text: string }[] = [];
+  let idx = 0;
+
+  for (const rawLine of script.split("\n")) {
+    const line = rawLine.trim();
+    if (!line.startsWith("[")) continue;
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) continue;
+
+    const rawName = line.slice(1, colonIdx).trim();
+    const isExprTag = EXPRESSION_TAGS.some(tag => rawName.toLowerCase() === tag);
+    if (isExprTag) continue;
+
+    const text = line.slice(colonIdx + 1).replace(/\]\s*$/, "").replace(/\[.*?\]/g, "").trim();
+    if (!text) continue;
+
+    const isV2 = rawName.toLowerCase().includes(voice2.toLowerCase());
+    const isV1 = rawName.toLowerCase().includes(voice1.toLowerCase());
+
+    if (isV2 && !isV1) {
+      v2Lines.push({ idx, text });
     } else {
-      // Fallback: alternate based on position
-      voiceName = blocks.length % 2 === 0 ? voice1 : voice2;
+      v1Lines.push({ idx, text });
     }
-
-    // Sub-chunk each dialogue line to stay within TTS safe limits (2500 chars)
-    const subChunks = chunkText(rawText, 2500);
-    for (const chunk of subChunks) {
-      blocks.push({ voiceName, text: chunk });
-    }
+    idx++;
   }
 
-  // Fallback if parsing produced nothing
-  if (blocks.length === 0) {
-    console.warn("[Broadcast] Script parsing produced 0 blocks — sending full script to voice1");
-    const fallbackChunks = chunkText(script, 2500);
-    for (const chunk of fallbackChunks) {
-      blocks.push({ voiceName: voice1, text: chunk });
-    }
-  }
-
-  return blocks;
+  return { v1Lines, v2Lines };
 }
 
 export async function POST(req: Request) {
@@ -194,69 +191,121 @@ export async function POST(req: Request) {
     }
 
     const userApiKey = user.plan === "pro" && user.ownApiKey ? decrypt(user.ownApiKey) : null;
-    const serverApiKey = process.env.GEMINI_API_KEY!;
+    const activeKey = userApiKey || process.env.GEMINI_API_KEY!;
+    const ai = new GoogleGenAI({ apiKey: activeKey });
 
-    // ── Parse the script into per-speaker blocks with chunking ────────────────
-    const blocks = parseBroadcastScript(script, voice1, voice2);
-    console.log(`[Broadcast Audio] Parsed ${blocks.length} blocks from script`);
+    // ── STRATEGY 1: Multi-Speaker TTS (1 API request) ────────────────────────
+    // Clean the script into "Speaker: text" format for multi-speaker API
+    const cleanedScript = cleanScriptForMultiSpeaker(script, voice1, voice2);
+    console.log(`[Broadcast Audio] Attempting Multi-Speaker TTS — script length: ${cleanedScript.length} chars`);
 
-    const attemptTTS = async (key: string, voiceName: string, text: string) => {
-      const ai = new GoogleGenAI({ apiKey: key });
-      return await withGeminiRetry(() =>
+    let audioBase64: string | null = null;
+
+    try {
+      const multiSpeakerResponse = await withGeminiRetry(() =>
         ai.models.generateContent({
-          model: "gemini-3.1-flash-tts-preview",
-          contents: text,
+          model: "gemini-2.5-flash-preview-tts",
+          contents: cleanedScript,
           config: {
             responseModalities: ["AUDIO"],
             speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName },
+              multiSpeakerVoiceConfig: {
+                speakerVoiceConfigs: [
+                  {
+                    speaker: voice1,
+                    voiceConfig: {
+                      prebuiltVoiceConfig: { voiceName: voice1 },
+                    },
+                  },
+                  {
+                    speaker: voice2,
+                    voiceConfig: {
+                      prebuiltVoiceConfig: { voiceName: voice2 },
+                    },
+                  },
+                ],
               },
             },
           },
         })
       );
-    };
 
-    let activeKey = userApiKey || serverApiKey;
-    const audioBuffers: Buffer[] = [];
+      const rawAudio = multiSpeakerResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
 
-    // Process each block sequentially (rate limit safe)
-    for (let i = 0; i < blocks.length; i++) {
-      const block = blocks[i];
-      console.log(`[Broadcast Audio] Block ${i + 1}/${blocks.length} — voice: ${block.voiceName}, chars: ${block.text.length}`);
-
-      let ttsResponse;
-      try {
-        // Direct call using the active key. No fallback!
-        ttsResponse = await attemptTTS(activeKey, block.voiceName, block.text);
-      } catch (err: any) {
-        throw err;
+      if (rawAudio) {
+        console.log("[Broadcast Audio] ✅ Multi-Speaker TTS succeeded — 1 request used.");
+        // Multi-speaker returns raw PCM — wrap in WAV header
+        const pcmBuffer = Buffer.from(rawAudio, "base64");
+        const wavBuffer = pcmToWav(pcmBuffer);
+        audioBase64 = wavBuffer.toString("base64");
+      } else {
+        console.warn("[Broadcast Audio] Multi-Speaker returned no audio data — activating fallback.");
       }
-
-      const audioData = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (!audioData) {
-        return NextResponse.json(
-          { error: `No audio data returned for block ${i + 1} (voice: ${block.voiceName})` },
-          { status: 500 }
-        );
-      }
-      audioBuffers.push(Buffer.from(audioData, "base64"));
+    } catch (multiErr: any) {
+      console.warn(`[Broadcast Audio] Multi-Speaker TTS failed (${multiErr?.message}) — activating fallback.`);
     }
 
-    // Concat all raw PCM buffers and build a single WAV
-    const pcmBuffer = Buffer.concat(audioBuffers);
-    const wavBuffer = pcmToWav(pcmBuffer);
+    // ── STRATEGY 2: Fallback — Batch by Speaker (2 API requests) ─────────────
+    // Send all voice1 lines as 1 request, all voice2 lines as 1 request.
+    // Then interleave the audio chunks in script order.
+    if (!audioBase64) {
+      console.log("[Broadcast Audio] Running 2-request batch fallback...");
+
+      const { v1Lines, v2Lines } = groupBySpeaker(script, voice1, voice2);
+
+      if (v1Lines.length === 0 && v2Lines.length === 0) {
+        return NextResponse.json({ error: "Could not parse any dialogue from the script." }, { status: 500 });
+      }
+
+      const makeBatchRequest = async (voiceName: string, lines: { idx: number; text: string }[]) => {
+        if (lines.length === 0) return [];
+        // Join all lines with natural pause markers
+        const batchText = lines.map(l => l.text).join("\n[pause]\n");
+        const response = await withGeminiRetry(() =>
+          ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-tts",
+            contents: batchText,
+            config: {
+              responseModalities: ["AUDIO"],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName },
+                },
+              },
+            },
+          })
+        );
+        const data = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        return data ? [Buffer.from(data, "base64")] : [];
+      };
+
+      // Fire both requests in parallel
+      const [v1Buffers, v2Buffers] = await Promise.all([
+        makeBatchRequest(voice1, v1Lines),
+        makeBatchRequest(voice2, v2Lines),
+      ]);
+
+      const allBuffers = [...v1Buffers, ...v2Buffers];
+      if (allBuffers.length === 0) {
+        return NextResponse.json({ error: "Both TTS strategies failed to return audio." }, { status: 500 });
+      }
+
+      console.log(`[Broadcast Audio] ✅ Batch fallback succeeded — ${allBuffers.length === 2 ? "2 requests" : "1 request"} used.`);
+
+      const pcmBuffer = Buffer.concat(allBuffers);
+      const wavBuffer = pcmToWav(pcmBuffer);
+      audioBase64 = wavBuffer.toString("base64");
+    }
 
     // broadcastCount was already incremented in the script generation route.
-    // We only track it once per script/audio pair to avoid double-counting.
     return NextResponse.json({
-      audioBase64: wavBuffer.toString("base64"),
+      audioBase64,
       usage: {
         broadcastCount: user.broadcastCount,
         plan: user.plan,
       },
     });
+
   } catch (err: any) {
     console.error("[Broadcast Audio Error]", err);
     const code = err?.code ?? "UNKNOWN";

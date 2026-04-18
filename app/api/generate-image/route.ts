@@ -5,12 +5,21 @@ import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { withGeminiRetry } from "@/lib/gemini";
 import { decrypt } from "@/lib/encryption";
+import { PRO_DAILY_IMAGE_LIMIT } from "@/lib/constants";
+import {
+  resetDailyIfNeeded,
+  isProDailyLimitReached,
+  getDailyCount,
+  incrementUsage,
+} from "@/lib/usage";
 
-export const maxDuration = 300; // Allow sufficient time for both prompt enhancement and image generation
+export const maxDuration = 300;
+
+const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
 
 export async function POST(req: Request) {
   try {
-    const { userId } = await auth();
+    const { userId, sessionClaims } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -18,8 +27,45 @@ export async function POST(req: Request) {
     await connectDB();
     let user = await User.findOne({ clerkId: userId });
 
+    const currentEmail =
+      (user?.email) ||
+      (sessionClaims?.email as string) ||
+      (sessionClaims?.primaryEmail as string) ||
+      "";
+    const isAdmin = ADMIN_EMAILS.includes(currentEmail);
+
     if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      user = await User.create({
+        clerkId: userId,
+        email: currentEmail,
+        plan: isAdmin ? "pro" : "free",
+        planStatus: isAdmin ? "active" : "none",
+      });
+    } else if (isAdmin && user.plan !== "pro") {
+      user.plan = "pro";
+      user.planStatus = "active";
+      await user.save();
+    } else if (user.plan === "pro" && user.planExpiresAt && new Date(user.planExpiresAt) <= new Date()) {
+      user.plan = "free";
+      user.planStatus = "expired";
+      await user.save();
+    }
+
+    // Reset daily counters if UTC date changed
+    resetDailyIfNeeded(user);
+
+    // ── Daily image limit for Pro users ─────────────────────────────────────────
+    if (user.plan === "pro" && isProDailyLimitReached(user, "image")) {
+      return NextResponse.json(
+        {
+          error: `Daily image limit reached (${PRO_DAILY_IMAGE_LIMIT} per day). Resets at midnight UTC.`,
+          limitReached: true,
+          type: "image",
+          dailyCount: getDailyCount(user, "image"),
+          dailyLimit: PRO_DAILY_IMAGE_LIMIT,
+        },
+        { status: 403 }
+      );
     }
 
     const { prompt } = await req.json();
@@ -28,7 +74,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
 
-    // Determine which API key to use for the prompt enhancement
+    // Determine which API key to use for prompt enhancement
     const userApiKey = user.plan === "pro" && user.ownApiKey ? decrypt(user.ownApiKey) : null;
     const serverApiKey = process.env.GEMINI_API_KEY!;
 
@@ -106,7 +152,6 @@ Example: "Young girl with silver hair standing on rooftop at twilight, city skyl
 - Output only the final enhanced prompt string — nothing else
 
 User's idea: ${prompt}`,
-
         })
       );
     };
@@ -116,8 +161,15 @@ User's idea: ${prompt}`,
       response = await attemptPromptEnhance(userApiKey || serverApiKey);
     } catch (err: any) {
       const msg = err?.message?.toLowerCase() || "";
-      if (userApiKey && (msg.includes("denied access") || msg.includes("permission_denied") || msg.includes("api_key_invalid") || msg.includes("quota") || msg.includes("exceeded"))) {
-        console.warn("[Generate Image Fallback] User custom key failed (auth/quota). Falling back to server key.");
+      if (
+        userApiKey &&
+        (msg.includes("denied access") ||
+          msg.includes("permission_denied") ||
+          msg.includes("api_key_invalid") ||
+          msg.includes("quota") ||
+          msg.includes("exceeded"))
+      ) {
+        console.warn("[Generate Image Fallback] User custom key failed. Falling back to server key.");
         response = await attemptPromptEnhance(serverApiKey);
       } else {
         throw err;
@@ -127,10 +179,8 @@ User's idea: ${prompt}`,
     const enhancedPrompt = response.text?.trim() || prompt;
     const seed = Math.floor(Math.random() * 1000000);
 
-    // Pollinations AI URL configuration
     const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
 
-    // Call Pollinations API from server to bypass client-side CORS and display issues
     const imgRes = await fetch(url);
     if (!imgRes.ok) {
       throw new Error("Failed to fetch image from Pollinations API");
@@ -140,11 +190,20 @@ User's idea: ${prompt}`,
     const buffer = Buffer.from(arrayBuffer);
     const base64Image = buffer.toString("base64");
 
+    // ── Record image generation (daily + all-time) ONLY on success ───────────
+    incrementUsage(user, "image");
+    await user.save();
+
     return NextResponse.json({
       enhancedPrompt,
-      imageBase64: base64Image
+      imageBase64: base64Image,
+      usage: {
+        imageCount:      user.imageCount,
+        dailyImageCount: getDailyCount(user, "image"),
+        dailyLimit:      PRO_DAILY_IMAGE_LIMIT,
+        plan:            user.plan,
+      },
     });
-
   } catch (error: any) {
     console.error("Generate image error:", error);
     return NextResponse.json(

@@ -3,8 +3,17 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
+import { PRO_DAILY_BROADCAST_LIMIT } from "@/lib/constants";
 import { withGeminiRetry } from "@/lib/gemini";
 import { decrypt } from "@/lib/encryption";
+import {
+  resetDailyIfNeeded,
+  isProDailyLimitReached,
+  getDailyCount,
+  incrementUsage,
+} from "@/lib/usage";
+
+const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
 
 export async function POST(req: Request) {
   try {
@@ -21,7 +30,6 @@ export async function POST(req: Request) {
       (sessionClaims?.email as string) ||
       (sessionClaims?.primaryEmail as string) ||
       "";
-    const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
     const isAdmin = ADMIN_EMAILS.includes(currentEmail);
 
     if (!user) {
@@ -41,6 +49,20 @@ export async function POST(req: Request) {
       await user.save();
     }
 
+    // Reset daily counters if UTC date changed
+    resetDailyIfNeeded(user);
+
+    // STRICT PRO ONLY GATE
+    if (user.plan !== "pro") {
+      return NextResponse.json(
+        {
+          error: "AI Broadcast features are available for PRO plan users only.",
+          code: "UPGRADE_REQUIRED",
+        },
+        { status: 403 }
+      );
+    }
+
     const { prompt, language = "hindi", voice1 = "Puck", voice2 = "Kore", durationMinutes = 1 } = await req.json();
 
     if (!prompt?.trim()) {
@@ -50,21 +72,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Duration cannot exceed 5 minutes" }, { status: 400 });
     }
 
-    // STRICT LIMIT: Max 1 broadcast generation per user to save tokens,
-    // UNLESS the user is a Pro user utilizing their own custom API key.
-    if (user.broadcastCount >= 1 && !(user.plan === "pro" && user.ownApiKey)) {
-      return NextResponse.json(
-        { error: "Broadcast limit reached. You can only generate 1 broadcast. Please add your own API key in Pro Settings to generate more." },
-        { status: 403 }
-      );
-    }
-
-    // STRICT PRO ONLY GATE
-    if (user.plan !== "pro") {
+    // ── Daily broadcast limit for Pro users ──────────────────────────────────────
+    if (isProDailyLimitReached(user, "broadcast")) {
       return NextResponse.json(
         {
-          error: "AI Broadcast features are available for PRO plan users only.",
-          code: "UPGRADE_REQUIRED",
+          error: `Daily broadcast limit reached (${PRO_DAILY_BROADCAST_LIMIT} per day). Resets at midnight UTC.`,
+          limitReached: true,
+          type: "broadcast",
+          dailyCount: getDailyCount(user, "broadcast"),
+          dailyLimit: PRO_DAILY_BROADCAST_LIMIT,
         },
         { status: 403 }
       );
@@ -92,7 +108,6 @@ export async function POST(req: Request) {
       ? `LANGUAGE: Write ALL spoken dialogue in natural, conversational Hindi (Devanagari script). Mix in English words naturally (Hinglish). Match gender strictly: ${voice1} is ${gender1}, ${voice2} is ${gender2}. Use correct gendered Hindi grammar for each speaker at all times.`
       : `LANGUAGE: Write ALL spoken dialogue in natural, fluent conversational English.`;
 
-    // Target: ~175 words/min for natural speech pacing
     const minWords = durationMinutes * 160;
     const maxWords = durationMinutes * 185;
 
@@ -168,32 +183,30 @@ Write the broadcast directly — open with HIGH ENERGY:`,
 
     let response;
     try {
-      // Direct call using the active key. No fallback!
       response = await attemptScriptGen(userApiKey || serverApiKey);
     } catch (err: any) {
       throw err;
     }
 
     const script = response.text;
-
     if (!script) {
       return NextResponse.json({ error: "Failed to generate broadcast script" }, { status: 500 });
     }
 
-    // Increment broadcastCount on EVERY script generation (prevents quota bypass
-    // where users could call script endpoint unlimited times without generating audio)
-    user.broadcastCount += 1;
+    // ── Record usage (daily + all-time) ──────────────────────────────────────────
+    incrementUsage(user, "broadcast");
     await user.save();
 
     return NextResponse.json({
       script,
       tokenUsage: response?.usageMetadata?.totalTokenCount || 0,
       usage: {
-        broadcastCount: user.broadcastCount,
-        plan: user.plan
-      }
+        broadcastCount:      user.broadcastCount,
+        dailyBroadcastCount: getDailyCount(user, "broadcast"),
+        dailyLimit:          PRO_DAILY_BROADCAST_LIMIT,
+        plan:                user.plan,
+      },
     });
-
   } catch (err: any) {
     console.error("[Broadcast Script Error]", err);
     const code = err?.code ?? "UNKNOWN";

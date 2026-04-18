@@ -5,6 +5,7 @@ import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { withGeminiRetry } from "@/lib/gemini";
 import { decrypt } from "@/lib/encryption";
+import { PRO_DAILY_BROADCAST_LIMIT } from "@/lib/constants";
 
 // ─── WAV Header Builder ───────────────────────────────────────────────────────
 function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 16): Buffer {
@@ -31,9 +32,6 @@ function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 
 }
 
 // ─── Script Cleaner ───────────────────────────────────────────────────────────
-// Converts [Puck: [excitedly] text [laughs] more text] → "Puck: [excitedly] text [laughs] more text"
-// Preserves inline expression tags — Gemini TTS reads them as delivery cues.
-// Only removes the OUTER structural [Speaker: ... ] brackets.
 function cleanScriptForMultiSpeaker(script: string, voice1: string, voice2: string): string {
   const lines: string[] = [];
 
@@ -45,25 +43,17 @@ function cleanScriptForMultiSpeaker(script: string, voice1: string, voice2: stri
     if (colonIdx === -1) continue;
 
     const rawName = line.slice(1, colonIdx).trim();
-
-    // Match speaker
     const isV2 = rawName.toLowerCase().includes(voice2.toLowerCase());
     const isV1 = rawName.toLowerCase().includes(voice1.toLowerCase());
     const speaker = isV2 && !isV1 ? voice2 : isV1 ? voice1 : null;
-    
-    // If it doesn't match either speaker (e.g. it's an expression tag like [laughs: ...]), skip it
+
     if (!speaker) continue;
 
-    // Extract spoken text — ONLY strip the outer trailing ] to close the [Speaker: ...] structure.
-    // Keep all inline [laughs], [excitedly], etc. — Gemini TTS uses these as delivery cues.
     let text = line
       .slice(colonIdx + 1)
-      .replace(/\]\s*$/, "")  // remove the ONE trailing ] that closes [Speaker: ...]
+      .replace(/\]\s*$/, "")
       .trim();
-
-    // Collapse extra whitespace only
     text = text.replace(/\s{2,}/g, " ").trim();
-
     if (!text) continue;
 
     lines.push(`${speaker}: ${text}`);
@@ -77,15 +67,12 @@ function cleanScriptForMultiSpeaker(script: string, voice1: string, voice2: stri
   return lines.join("\n");
 }
 
-
-// ─── Fallback: Batch by Speaker (2 requests total) ───────────────────────────
-// Groups all lines per speaker, sends 2 parallel TTS requests, then interleaves.
+// ─── Fallback: Batch by Speaker ───────────────────────────────────────────────
 function groupBySpeaker(
   script: string,
   voice1: string,
   voice2: string
 ): { v1Lines: { idx: number; text: string }[]; v2Lines: { idx: number; text: string }[] } {
-
   const v1Lines: { idx: number; text: string }[] = [];
   const v2Lines: { idx: number; text: string }[] = [];
   let idx = 0;
@@ -97,13 +84,11 @@ function groupBySpeaker(
     if (colonIdx === -1) continue;
 
     const rawName = line.slice(1, colonIdx).trim();
-    
     const isV2 = rawName.toLowerCase().includes(voice2.toLowerCase());
     const isV1 = rawName.toLowerCase().includes(voice1.toLowerCase());
-    
+
     if (!isV1 && !isV2) continue;
 
-    // Do NOT strip expression tags — Gemini TTS can read them even in batch mode
     const text = line.slice(colonIdx + 1).replace(/\]\s*$/, "").trim();
     if (!text) continue;
 
@@ -117,6 +102,8 @@ function groupBySpeaker(
 
   return { v1Lines, v2Lines };
 }
+
+const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
 
 export async function POST(req: Request) {
   try {
@@ -133,7 +120,6 @@ export async function POST(req: Request) {
       (sessionClaims?.email as string) ||
       (sessionClaims?.primaryEmail as string) ||
       "";
-    const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
     const isAdmin = ADMIN_EMAILS.includes(currentEmail);
 
     if (!user) {
@@ -159,15 +145,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing required parameters" }, { status: 400 });
     }
 
-    // STRICT LIMIT: Max 1 broadcast generation per user to save tokens,
-    // UNLESS the user is a Pro user utilizing their own custom API key.
-    if (user.broadcastCount >= 1 && !(user.plan === "pro" && user.ownApiKey)) {
-      return NextResponse.json(
-        { error: "Broadcast limit reached. You can only generate 1 broadcast. Please add your own API key in Pro Settings to generate more." },
-        { status: 403 }
-      );
-    }
-
     // STRICT PRO ONLY GATE
     if (user.plan !== "pro") {
       return NextResponse.json(
@@ -179,12 +156,15 @@ export async function POST(req: Request) {
       );
     }
 
+    // NOTE: The broadcast count and daily limit were already enforced and
+    // incremented in generate-broadcast-script. This route only converts the
+    // already-generated script to audio — no additional quota deducted here.
+
     const userApiKey = user.plan === "pro" && user.ownApiKey ? decrypt(user.ownApiKey) : null;
     const activeKey = userApiKey || process.env.GEMINI_API_KEY!;
     const ai = new GoogleGenAI({ apiKey: activeKey });
 
     // ── STRATEGY 1: Multi-Speaker TTS (1 API request) ────────────────────────
-    // Clean the script into "Speaker: text" format for multi-speaker API
     const cleanedScript = cleanScriptForMultiSpeaker(script, voice1, voice2);
     console.log(`[Broadcast Audio] Attempting Multi-Speaker TTS — script length: ${cleanedScript.length} chars`);
 
@@ -223,7 +203,6 @@ export async function POST(req: Request) {
 
       if (rawAudio) {
         console.log("[Broadcast Audio] ✅ Multi-Speaker TTS succeeded — 1 request used.");
-        // Multi-speaker returns raw PCM — wrap in WAV header
         const pcmBuffer = Buffer.from(rawAudio, "base64");
         const wavBuffer = pcmToWav(pcmBuffer);
         audioBase64 = wavBuffer.toString("base64");
@@ -235,8 +214,6 @@ export async function POST(req: Request) {
     }
 
     // ── STRATEGY 2: Fallback — Batch by Speaker (2 API requests) ─────────────
-    // Send all voice1 lines as 1 request, all voice2 lines as 1 request.
-    // Then interleave the audio chunks in script order.
     if (!audioBase64) {
       console.log("[Broadcast Audio] Running 2-request batch fallback...");
 
@@ -248,8 +225,7 @@ export async function POST(req: Request) {
 
       const makeBatchRequest = async (voiceName: string, lines: { idx: number; text: string }[]) => {
         if (lines.length === 0) return [];
-        // Join all lines with natural pause markers
-        const batchText = lines.map(l => l.text).join("\n[pause]\n");
+        const batchText = lines.map((l) => l.text).join("\n[pause]\n");
         const response = await withGeminiRetry(() =>
           ai.models.generateContent({
             model: "gemini-2.5-flash-preview-tts",
@@ -268,7 +244,6 @@ export async function POST(req: Request) {
         return data ? [Buffer.from(data, "base64")] : [];
       };
 
-      // Fire both requests in parallel
       const [v1Buffers, v2Buffers] = await Promise.all([
         makeBatchRequest(voice1, v1Lines),
         makeBatchRequest(voice2, v2Lines),
@@ -286,15 +261,15 @@ export async function POST(req: Request) {
       audioBase64 = wavBuffer.toString("base64");
     }
 
-    // broadcastCount was already incremented in the script generation route.
     return NextResponse.json({
       audioBase64,
       usage: {
-        broadcastCount: user.broadcastCount,
-        plan: user.plan,
+        broadcastCount:      user.broadcastCount      ?? 0,
+        dailyBroadcastCount: user.dailyBroadcastCount ?? 0,
+        dailyLimit:          PRO_DAILY_BROADCAST_LIMIT,
+        plan:                user.plan,
       },
     });
-
   } catch (err: any) {
     console.error("[Broadcast Audio Error]", err);
     const code = err?.code ?? "UNKNOWN";

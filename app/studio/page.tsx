@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useRef, useEffect } from "react";
 import { UserButton, useUser } from "@clerk/nextjs";
@@ -24,9 +24,24 @@ type Stage = "input" | "review";
 interface UserProfile {
   plan: "free" | "pro";
   planStatus: "active" | "expired" | "none";
+  // All-time totals
   directTtsCount: number;
   aiScriptCount: number;
   broadcastCount: number;
+  imageCount: number;
+  musicCount: number;
+  // Daily counts (reset UTC midnight)
+  dailyDirectTtsCount: number;
+  dailyAiScriptCount: number;
+  dailyBroadcastCount: number;
+  dailyImageCount: number;
+  // Limits returned from server
+  proLimits: {
+    directTts: number;
+    aiScript: number;
+    broadcast: number;
+    image: number;
+  };
   hasOwnApiKey: boolean;
   ownApiKey: string | null;
   planActivatedAt: string | null;
@@ -382,9 +397,9 @@ export default function StudioPage() {
       
       if (data.usage) {
         if (mode === "broadcast") {
-          setProfile(prev => prev ? { ...prev, broadcastCount: data.usage.broadcastCount } : null);
+          setProfile(prev => prev ? { ...prev, broadcastCount: data.usage.broadcastCount, dailyBroadcastCount: data.usage.dailyBroadcastCount ?? prev.dailyBroadcastCount } : null);
         } else {
-          setProfile(prev => prev ? { ...prev, aiScriptCount: data.usage.aiScriptCount } : null);
+          setProfile(prev => prev ? { ...prev, aiScriptCount: data.usage.aiScriptCount, dailyAiScriptCount: data.usage.dailyAiScriptCount ?? prev.dailyAiScriptCount } : null);
         }
       }
     } catch (err: any) {
@@ -457,14 +472,14 @@ export default function StudioPage() {
       toast.success(mode === "broadcast" ? "Broadcast audio generated successfully!" : `Voice "${voiceLabel}" generated successfully!`, "Audio Ready");
       if (data.usage) {
         if (mode === "broadcast") {
-           setProfile(prev => prev ? { ...prev, broadcastCount: data.usage.broadcastCount } : null);
+           setProfile(prev => prev ? { ...prev, broadcastCount: data.usage.broadcastCount, dailyBroadcastCount: data.usage.dailyBroadcastCount ?? prev.dailyBroadcastCount } : null);
            // Auto-reset so user can create a new broadcast immediately
            setStage("input");
            setEditedScript("");
            setUserIdea("");
            setError("");
         } else {
-           setProfile(prev => prev ? { ...prev, directTtsCount: data.usage.directTtsCount } : null);
+           setProfile(prev => prev ? { ...prev, directTtsCount: data.usage.directTtsCount, dailyDirectTtsCount: data.usage.dailyDirectTtsCount ?? prev.dailyDirectTtsCount } : null);
         }
       }
     } catch (err: any) {
@@ -552,7 +567,12 @@ export default function StudioPage() {
       const data = await res.json();
 
       if (!res.ok) {
-         throw new Error(data.error || "Failed to generate image");
+        if (data.limitReached) {
+          setError(data.error);
+          toast.warning(data.error, "Daily Limit Reached");
+          return;
+        }
+        throw new Error(data.error || "Failed to generate image");
       }
 
       const newItem: AudioItem = {
@@ -567,6 +587,15 @@ export default function StudioPage() {
       setAudioHistory(prev => [newItem, ...prev]);
       toast.success("AI Image generated! Check your history.", "Image Ready");
       setImagePrompt("");
+
+      // Update daily image counter in local state immediately
+      if (data.usage) {
+        setProfile(prev => prev ? {
+          ...prev,
+          imageCount: data.usage.imageCount,
+          dailyImageCount: data.usage.dailyImageCount ?? prev.dailyImageCount,
+        } : null);
+      }
 
     } catch (err: any) {
       toast.error(err.message || "Failed to generate Image.", "Generation Failed");
@@ -596,8 +625,8 @@ export default function StudioPage() {
   };
 
   const formatTime = (d: Date) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const BROADCAST_LIMIT = 5;
-  const broadcastCount = profile?.broadcastCount || 0;
+  const BROADCAST_LIMIT = profile?.proLimits?.broadcast ?? 5;
+  const broadcastCount = profile?.dailyBroadcastCount ?? 0;
   const broadcastReached = broadcastCount >= BROADCAST_LIMIT;
 
 
@@ -633,16 +662,34 @@ export default function StudioPage() {
              {profile && (
               <div className="hidden md:flex items-center gap-4">
                 {profile.plan === "pro" ? (
-                  <div className="flex items-center gap-4 bg-white/[0.02] border border-white/[0.05] pl-4 pr-1 py-1 rounded-2xl">
-                    <div className="flex items-center gap-2 pr-3">
-                      <div className="flex flex-col items-end border-r border-white/10 pr-4 mr-1">
-                        <span className="text-[11px] font-bold text-indigo-300/60 uppercase tracking-widest">Broadcast</span>
-                        <span className={`text-sm font-mono font-bold ${broadcastCount >= BROADCAST_LIMIT ? 'text-red-400' : 'text-pink-400'}`}>{Math.min(broadcastCount, BROADCAST_LIMIT)}/{BROADCAST_LIMIT}</span>
-                      </div>
-                      <div className="flex flex-col items-end">
-                        <span className="text-[11px] font-bold text-indigo-300/60 uppercase tracking-widest">Session</span>
-                        <span className="text-sm font-mono text-white font-bold">{sessionTokens.toLocaleString()} tkn</span>
-                      </div>
+                  <div className="flex items-center gap-2 bg-white/[0.02] border border-white/[0.05] px-3 py-1.5 rounded-2xl">
+                    {/* Direct TTS */}
+                    <div className="flex flex-col items-center border-r border-white/10 pr-3 mr-1">
+                      <span className="text-[9px] font-bold text-indigo-300/50 uppercase tracking-widest">Direct</span>
+                      <span className={`text-xs font-mono font-black ${(profile.dailyDirectTtsCount ?? 0) >= (profile.proLimits?.directTts ?? 9) ? 'text-red-400' : 'text-cyan-400'}`}>
+                        {profile.dailyDirectTtsCount ?? 0}/{profile.proLimits?.directTts ?? 9}
+                      </span>
+                    </div>
+                    {/* AI Scripts */}
+                    <div className="flex flex-col items-center border-r border-white/10 pr-3 mr-1">
+                      <span className="text-[9px] font-bold text-indigo-300/50 uppercase tracking-widest">Scripts</span>
+                      <span className={`text-xs font-mono font-black ${(profile.dailyAiScriptCount ?? 0) >= (profile.proLimits?.aiScript ?? 9) ? 'text-red-400' : 'text-violet-400'}`}>
+                        {profile.dailyAiScriptCount ?? 0}/{profile.proLimits?.aiScript ?? 9}
+                      </span>
+                    </div>
+                    {/* Broadcast */}
+                    <div className="flex flex-col items-center border-r border-white/10 pr-3 mr-1">
+                      <span className="text-[9px] font-bold text-indigo-300/50 uppercase tracking-widest">Broadcast</span>
+                      <span className={`text-xs font-mono font-black ${broadcastCount >= BROADCAST_LIMIT ? 'text-red-400' : 'text-pink-400'}`}>
+                        {Math.min(broadcastCount, BROADCAST_LIMIT)}/{BROADCAST_LIMIT}
+                      </span>
+                    </div>
+                    {/* Images */}
+                    <div className="flex flex-col items-center">
+                      <span className="text-[9px] font-bold text-indigo-300/50 uppercase tracking-widest">Images</span>
+                      <span className={`text-xs font-mono font-black ${(profile.dailyImageCount ?? 0) >= (profile.proLimits?.image ?? 21) ? 'text-red-400' : 'text-emerald-400'}`}>
+                        {profile.dailyImageCount ?? 0}/{profile.proLimits?.image ?? 21}
+                      </span>
                     </div>
                   </div>
                 ) : (

@@ -3,9 +3,17 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
-import { FREE_AI_SCRIPT_LIMIT } from "@/lib/constants";
+import { FREE_AI_SCRIPT_LIMIT, PRO_DAILY_AI_SCRIPT_LIMIT } from "@/lib/constants";
 import { withGeminiRetry } from "@/lib/gemini";
 import { decrypt } from "@/lib/encryption";
+import {
+  resetDailyIfNeeded,
+  isProDailyLimitReached,
+  getDailyCount,
+  incrementUsage,
+} from "@/lib/usage";
+
+const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
 
 export async function POST(req: Request) {
   try {
@@ -22,7 +30,6 @@ export async function POST(req: Request) {
       (sessionClaims?.email as string) ||
       (sessionClaims?.primaryEmail as string) ||
       "";
-    const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
     const isAdmin = ADMIN_EMAILS.includes(currentEmail);
 
     if (!user) {
@@ -37,11 +44,13 @@ export async function POST(req: Request) {
       user.planStatus = "active";
       await user.save();
     } else if (user.plan === "pro" && user.planExpiresAt && new Date(user.planExpiresAt) <= new Date()) {
-      // Auto-expire -- treat as free for this request
       user.plan = "free";
       user.planStatus = "expired";
       await user.save();
     }
+
+    // Reset daily counters if UTC date changed
+    resetDailyIfNeeded(user);
 
     const { prompt, language = "hindi", voice = "Kore", durationMinutes = 1 } = await req.json();
 
@@ -49,21 +58,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
 
-    // ── Enforce limits ──
+    // ── Quota check ─────────────────────────────────────────────────────────────
     if (user.plan === "free") {
-      if (user.aiScriptCount >= FREE_AI_SCRIPT_LIMIT) {
+      if ((user.aiScriptCount ?? 0) >= FREE_AI_SCRIPT_LIMIT) {
         return NextResponse.json(
           {
-            error: `Free plan limit reached (${FREE_AI_SCRIPT_LIMIT} AI script generations). Upgrade to Pro to get unlimited generations.`,
+            error: `Free plan limit reached (${FREE_AI_SCRIPT_LIMIT} AI script generations). Upgrade to Pro for more.`,
             limitReached: true,
             type: "ai",
           },
           { status: 403 }
         );
       }
+    } else if (user.plan === "pro" && isProDailyLimitReached(user, "aiScript")) {
+      return NextResponse.json(
+        {
+          error: `Daily limit reached (${PRO_DAILY_AI_SCRIPT_LIMIT} AI script generations per day). Resets at midnight UTC.`,
+          limitReached: true,
+          type: "ai",
+          dailyCount: getDailyCount(user, "aiScript"),
+          dailyLimit: PRO_DAILY_AI_SCRIPT_LIMIT,
+        },
+        { status: 403 }
+      );
     }
 
-    // Determine which API key to use
     const userApiKey = user.plan === "pro" && user.ownApiKey ? decrypt(user.ownApiKey) : null;
     const serverApiKey = process.env.GEMINI_API_KEY!;
 
@@ -135,8 +154,15 @@ Return ONLY the formatted script. No commentary, no explanations.`,
       response = await attemptScriptGen(userApiKey || serverApiKey);
     } catch (err: any) {
       const msg = err?.message?.toLowerCase() || "";
-      if (userApiKey && (msg.includes("denied access") || msg.includes("permission_denied") || msg.includes("api_key_invalid") || msg.includes("quota") || msg.includes("exceeded"))) {
-        console.warn("[Script Gen Fallback] User custom key failed (auth/quota). Falling back to server key.");
+      if (
+        userApiKey &&
+        (msg.includes("denied access") ||
+          msg.includes("permission_denied") ||
+          msg.includes("api_key_invalid") ||
+          msg.includes("quota") ||
+          msg.includes("exceeded"))
+      ) {
+        console.warn("[Script Gen Fallback] User custom key failed. Falling back to server key.");
         response = await attemptScriptGen(serverApiKey);
       } else {
         throw err;
@@ -144,26 +170,24 @@ Return ONLY the formatted script. No commentary, no explanations.`,
     }
 
     const script = response.text;
-
     if (!script) {
       return NextResponse.json({ error: "Failed to generate script" }, { status: 500 });
     }
 
-    // Increment usage counter for free users
-    if (user.plan === "free") {
-      user.aiScriptCount += 1;
-      await user.save();
-    }
+    // ── Record usage (daily + all-time, both free and pro) ───────────────────────
+    incrementUsage(user, "aiScript");
+    await user.save();
 
     return NextResponse.json({
       script,
       tokenUsage: response?.usageMetadata?.totalTokenCount || 0,
       usage: {
-        aiScriptCount: user.aiScriptCount,
-        plan: user.plan
-      }
+        aiScriptCount:      user.aiScriptCount,
+        dailyAiScriptCount: getDailyCount(user, "aiScript"),
+        dailyLimit:         PRO_DAILY_AI_SCRIPT_LIMIT,
+        plan:               user.plan,
+      },
     });
-
   } catch (err: any) {
     console.error("[Script Gen Error]", err);
     const code = err?.code ?? "UNKNOWN";

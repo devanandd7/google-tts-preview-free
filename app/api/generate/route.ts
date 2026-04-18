@@ -3,9 +3,15 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
-import { FREE_DIRECT_TTS_LIMIT } from "@/lib/constants";
+import { FREE_DIRECT_TTS_LIMIT, PRO_DAILY_DIRECT_TTS_LIMIT } from "@/lib/constants";
 import { withGeminiRetry } from "@/lib/gemini";
 import { decrypt } from "@/lib/encryption";
+import {
+  resetDailyIfNeeded,
+  isProDailyLimitReached,
+  getDailyCount,
+  incrementUsage,
+} from "@/lib/usage";
 
 // Convert raw PCM from Gemini into a proper WAV file with header
 function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 16): Buffer {
@@ -40,9 +46,7 @@ function chunkText(text: string, maxLen: number = 3000): string[] {
   let currentChunk = "";
   for (const sentence of sentences) {
     if ((currentChunk + sentence).length > maxLen) {
-      if (currentChunk.trim()) {
-        chunks.push(currentChunk.trim());
-      }
+      if (currentChunk.trim()) chunks.push(currentChunk.trim());
       currentChunk = sentence;
       while (currentChunk.length > maxLen) {
         chunks.push(currentChunk.substring(0, maxLen).trim());
@@ -52,15 +56,15 @@ function chunkText(text: string, maxLen: number = 3000): string[] {
       currentChunk += sentence;
     }
   }
-  if (currentChunk.trim()) {
-    chunks.push(currentChunk.trim());
-  }
+  if (currentChunk.trim()) chunks.push(currentChunk.trim());
   return chunks.length ? chunks : [text];
 }
 
+const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
+
 export async function POST(req: Request) {
   try {
-    const { userId } = await auth();
+    const { userId, sessionClaims } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -68,13 +72,11 @@ export async function POST(req: Request) {
     await connectDB();
     let user = await User.findOne({ clerkId: userId });
 
-    const { sessionClaims } = await auth();
     const currentEmail =
       (user?.email) ||
       (sessionClaims?.email as string) ||
       (sessionClaims?.primaryEmail as string) ||
       "";
-    const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
     const isAdmin = ADMIN_EMAILS.includes(currentEmail);
 
     if (!user) {
@@ -94,23 +96,38 @@ export async function POST(req: Request) {
       await user.save();
     }
 
+    // Reset daily counters if UTC date changed
+    resetDailyIfNeeded(user);
+
     const { script, voice = "Kore" } = await req.json();
 
     if (!script?.trim()) {
       return NextResponse.json({ error: "Missing script" }, { status: 400 });
     }
 
+    // ── Quota check ─────────────────────────────────────────────────────────────
     if (user.plan === "free") {
-      if (user.directTtsCount >= FREE_DIRECT_TTS_LIMIT) {
+      if ((user.directTtsCount ?? 0) >= FREE_DIRECT_TTS_LIMIT) {
         return NextResponse.json(
           {
-            error: `Free plan limit reached (${FREE_DIRECT_TTS_LIMIT} direct TTS generations). Upgrade to Pro to get unlimited generations.`,
+            error: `Free plan limit reached (${FREE_DIRECT_TTS_LIMIT} direct TTS). Upgrade to Pro for more.`,
             limitReached: true,
             type: "direct",
           },
           { status: 403 }
         );
       }
+    } else if (user.plan === "pro" && isProDailyLimitReached(user, "direct")) {
+      return NextResponse.json(
+        {
+          error: `Daily limit reached (${PRO_DAILY_DIRECT_TTS_LIMIT} direct TTS per day). Resets at midnight UTC.`,
+          limitReached: true,
+          type: "direct",
+          dailyCount: getDailyCount(user, "direct"),
+          dailyLimit: PRO_DAILY_DIRECT_TTS_LIMIT,
+        },
+        { status: 403 }
+      );
     }
 
     const userApiKey = user.plan === "pro" && user.ownApiKey ? decrypt(user.ownApiKey) : null;
@@ -126,7 +143,7 @@ export async function POST(req: Request) {
       Rasalgethi: "male", Alnilam: "male", Achird: "male", Zubenelgenubi: "male",
       Sadachbia: "male", Sadaltager: "male",
     };
-    const gender = VOICE_GENDERS[voice] ?? "neutral";
+    const _gender = VOICE_GENDERS[voice] ?? "neutral";
 
     const attemptTTS = async (key: string, chunkedScript: string) => {
       const ai = new GoogleGenAI({ apiKey: key });
@@ -156,8 +173,15 @@ export async function POST(req: Request) {
         ttsResponse = await attemptTTS(activeKey, chunk);
       } catch (err: any) {
         const msg = err?.message?.toLowerCase() || "";
-        if (activeKey === userApiKey && (msg.includes("denied access") || msg.includes("permission_denied") || msg.includes("api_key_invalid") || msg.includes("quota") || msg.includes("exceeded"))) {
-          console.warn("[TTS Fallback] User custom key failed (auth/quota). Falling back to server key.");
+        if (
+          activeKey === userApiKey &&
+          (msg.includes("denied access") ||
+            msg.includes("permission_denied") ||
+            msg.includes("api_key_invalid") ||
+            msg.includes("quota") ||
+            msg.includes("exceeded"))
+        ) {
+          console.warn("[TTS Fallback] User custom key failed. Falling back to server key.");
           activeKey = serverApiKey;
           ttsResponse = await attemptTTS(activeKey, chunk);
         } else {
@@ -167,13 +191,16 @@ export async function POST(req: Request) {
 
       const audioData = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       if (!audioData) {
-        return NextResponse.json({ error: "Failed to generate audio — no audio data returned from a chunk" }, { status: 500 });
+        return NextResponse.json(
+          { error: "Failed to generate audio — no audio data returned from a chunk" },
+          { status: 500 }
+        );
       }
       audioBuffers.push(Buffer.from(audioData, "base64"));
     }
 
-    // Increment usage counter for all users so we can display visual quota metrics
-    user.directTtsCount += 1;
+    // ── Record usage (daily + all-time) ──────────────────────────────────────────
+    incrementUsage(user, "direct");
     await user.save();
 
     const pcmBuffer = Buffer.concat(audioBuffers);
@@ -182,8 +209,10 @@ export async function POST(req: Request) {
     return NextResponse.json({
       audioBase64: wavBuffer.toString("base64"),
       usage: {
-        directTtsCount: user.directTtsCount,
-        plan: user.plan,
+        directTtsCount:      user.directTtsCount,
+        dailyDirectTtsCount: getDailyCount(user, "direct"),
+        dailyLimit:          PRO_DAILY_DIRECT_TTS_LIMIT,
+        plan:                user.plan,
       },
     });
   } catch (err: any) {

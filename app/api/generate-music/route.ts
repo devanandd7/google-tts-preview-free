@@ -6,7 +6,7 @@ import User from "@/models/User";
 import { decrypt } from "@/lib/encryption";
 import { withGeminiRetry } from "@/lib/gemini";
 
-export const maxDuration = 300; // 5 minutes max duration for serverless processing of full track
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   try {
@@ -24,10 +24,13 @@ export async function POST(req: Request) {
 
     // STRICT PRO ONLY GATE
     if (user.plan !== "pro") {
-      return NextResponse.json({ 
-        error: "AI Music generation is available for PRO plan users only.",
-        code: "UPGRADE_REQUIRED" 
-      }, { status: 403 });
+      return NextResponse.json(
+        {
+          error: "AI Music generation is available for PRO plan users only.",
+          code: "UPGRADE_REQUIRED",
+        },
+        { status: 403 }
+      );
     }
 
     const { prompt, lyrics, duration, instrumental } = await req.json();
@@ -37,18 +40,15 @@ export async function POST(req: Request) {
     }
 
     let finalPrompt = prompt.trim();
-    
-    // Construct the smart prompt based on user settings
+
     if (instrumental) {
       finalPrompt = "Instrumental only, no vocals. " + finalPrompt;
     }
-    
+
     if (lyrics && lyrics.trim()) {
-      // User provided custom lyrics
       finalPrompt = `Create a track matching this style: ${finalPrompt}\n\nWith the following lyrics:\n${lyrics.trim()}`;
     }
 
-    // Prepare API keys
     const customApiKey = user.ownApiKey ? decrypt(user.ownApiKey) : null;
     const serverApiKey = process.env.GEMINI_API_KEY;
 
@@ -58,13 +58,13 @@ export async function POST(req: Request) {
       const modelName = isFull ? "lyria-3-pro-preview" : "lyria-3-clip-preview";
 
       const config = {
-        responseModalities: ["AUDIO", "TEXT"], // Include text to potentially get generated lyrics back
+        responseModalities: ["AUDIO", "TEXT"],
       };
 
       const response = await ai.models.generateContent({
         model: modelName,
         contents: finalPrompt,
-        config
+        config,
       });
 
       let base64Audio = null;
@@ -76,24 +76,23 @@ export async function POST(req: Request) {
 
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
-           base64Audio = part.inlineData.data; // This is raw base64 string
+          base64Audio = part.inlineData.data;
         } else if (part.text) {
-           generatedText = part.text;
+          generatedText = part.text;
         }
       }
 
       if (!base64Audio) {
-         throw new Error("Failed to generate audio content.");
+        throw new Error("Failed to generate audio content.");
       }
 
       return {
         audioBase64: base64Audio,
         lyricsOrStructure: generatedText,
-        tokenUsage: response.usageMetadata?.totalTokenCount || 0
+        tokenUsage: response.usageMetadata?.totalTokenCount || 0,
       };
     };
 
-    // Attempt generation with Fallback methodology using gemini retry wrapper
     let result;
     let usedKeyType = "server";
 
@@ -104,14 +103,14 @@ export async function POST(req: Request) {
           console.log("[Music Gen] Attempting with User Custom API Key");
           result = await withGeminiRetry(() => attemptMusicGen(customApiKey));
         } catch (e: any) {
-          console.warn("[Music Gen Fallback] User custom key failed. trying server key.");
+          console.warn("[Music Gen Fallback] User custom key failed. Trying server key.");
           if (!serverApiKey) throw e;
           usedKeyType = "server";
           result = await withGeminiRetry(() => attemptMusicGen(serverApiKey));
         }
       } else {
         if (!serverApiKey) {
-           throw new Error("No Gemini API key available on server either.");
+          throw new Error("No Gemini API key available on server either.");
         }
         console.log("[Music Gen] Attempting with Server API Key");
         result = await withGeminiRetry(() => attemptMusicGen(serverApiKey));
@@ -119,27 +118,37 @@ export async function POST(req: Request) {
     } catch (e: any) {
       const errMsg = e.message || "";
       if (errMsg.includes("SAFETY") || e.code === "SAFETY_BLOCK") {
-         return NextResponse.json({ error: "Content blocked by safety filters.", code: "SAFETY_BLOCK" }, { status: 400 });
+        return NextResponse.json(
+          { error: "Content blocked by safety filters.", code: "SAFETY_BLOCK" },
+          { status: 400 }
+        );
       }
       if (errMsg.includes("QUOTA") || e.code === "QUOTA_EXCEEDED" || errMsg.includes("429")) {
-         const keySource = usedKeyType === "custom" ? "your Custom API Key" : "our Server API Key";
-         return NextResponse.json({ 
-            error: `Gemini API limit exceeded on ${keySource}. Lyria Music models have very strict quotas. Please wait or try your own API key.`, 
-            code: "QUOTA_EXCEEDED" 
-         }, { status: 429 });
+        const keySource = usedKeyType === "custom" ? "your Custom API Key" : "our Server API Key";
+        return NextResponse.json(
+          {
+            error: `Gemini API limit exceeded on ${keySource}. Lyria Music models have very strict quotas. Please wait or try your own API key.`,
+            code: "QUOTA_EXCEEDED",
+          },
+          { status: 429 }
+        );
       }
       throw e;
     }
+
+    // ── Record music generation (all-time total) ──────────────────────────────
+    user.musicCount = (user.musicCount ?? 0) + 1;
+    await user.save();
 
     return NextResponse.json({
       audioBase64: `data:audio/mp3;base64,${result.audioBase64}`,
       generatedLyrics: result.lyricsOrStructure,
       tokenUsage: result.tokenUsage,
       usage: {
-        plan: user.plan
-      }
+        musicCount: user.musicCount,
+        plan: user.plan,
+      },
     });
-
   } catch (error: any) {
     console.error("Music generation error:", error);
     return NextResponse.json(

@@ -1,8 +1,13 @@
-import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { decrypt } from "@/lib/encryption";
+import {
+  resetDailyIfNeeded,
+  getDailyCount,
+  getProDailyLimit,
+} from "../../../../lib/usage";
 
 const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
 
@@ -62,6 +67,10 @@ export async function GET() {
       }
     }
 
+    // Reset daily counters if a new day has started (UTC)
+    const didReset = resetDailyIfNeeded(user);
+    if (didReset) await user.save();
+
     const now = new Date();
     const expiresAt = user.planExpiresAt ? new Date(user.planExpiresAt) : null;
     const daysLeft = expiresAt
@@ -71,9 +80,26 @@ export async function GET() {
     return NextResponse.json({
       plan: user.plan,
       planStatus: user.planStatus ?? "none",
-      directTtsCount: user.directTtsCount,
-      aiScriptCount: user.aiScriptCount,
-      broadcastCount: user.broadcastCount,
+
+      // All-time totals
+      directTtsCount:  user.directTtsCount  ?? 0,
+      aiScriptCount:   user.aiScriptCount   ?? 0,
+      broadcastCount:  user.broadcastCount  ?? 0,
+      imageCount:      user.imageCount      ?? 0,
+      musicCount:      user.musicCount      ?? 0,
+
+      // Daily counters + limits (for UI progress bars)
+      dailyDirectTtsCount:  getDailyCount(user, "direct"),
+      dailyAiScriptCount:   getDailyCount(user, "aiScript"),
+      dailyBroadcastCount:  getDailyCount(user, "broadcast"),
+      dailyImageCount:      getDailyCount(user, "image"),
+      proLimits: {
+        directTts:  getProDailyLimit("direct"),
+        aiScript:   getProDailyLimit("aiScript"),
+        broadcast:  getProDailyLimit("broadcast"),
+        image:      getProDailyLimit("image"),
+      },
+
       hasOwnApiKey: !!user.ownApiKey,
       ownApiKey: user.ownApiKey ? decrypt(user.ownApiKey) : null,
       planActivatedAt: user.planActivatedAt?.toISOString() ?? null,

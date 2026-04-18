@@ -18,7 +18,7 @@ declare global {
 
 type Language = "hindi" | "english";
 
-type Mode = "direct" | "ai" | "broadcast" | "music";
+type Mode = "direct" | "ai" | "broadcast" | "music" | "image";
 type Stage = "input" | "review";
 
 interface UserProfile {
@@ -76,9 +76,11 @@ const MALE_VOICES = VOICE_LIST.filter(v => v.gender === "male");
 
 interface AudioItem {
   id: string;
+  type?: "audio" | "image";
   voice: string;
   scriptPreview: string;
-  audioBase64: string;
+  audioBase64?: string;
+  imageUrl?: string;
   createdAt: Date;
 }
 
@@ -145,6 +147,10 @@ export default function StudioPage() {
   const [musicLyrics, setMusicLyrics] = useState("");
   const [musicDuration, setMusicDuration] = useState<"30s" | "full">("30s");
   const [musicInstrumental, setMusicInstrumental] = useState(false);
+
+  // Image State
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [imageGenerating, setImageGenerating] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
@@ -520,6 +526,49 @@ export default function StudioPage() {
     }
   };
 
+  const handleGenerateImage = async () => {
+    if (!imagePrompt.trim()) return;
+    setImageGenerating(true);
+    setError("");
+
+    try {
+      // 1. Enhance the prompt using Gemini
+      const res = await fetch("/api/enhance-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: imagePrompt }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+         throw new Error(data.error || "Failed to enhance prompt");
+      }
+
+      const enhancedPrompt = data.enhancedPrompt || imagePrompt;
+      const seed = Math.floor(Math.random() * 1000000);
+      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
+
+      const newItem: AudioItem = {
+        id: Date.now().toString(),
+        type: "image",
+        voice: "Pollinations AI",
+        scriptPreview: enhancedPrompt,
+        imageUrl: url,
+        createdAt: new Date(),
+      };
+      
+      setAudioHistory(prev => [newItem, ...prev]);
+      toast.success("AI Image generated! Check your history.", "Image Ready");
+      setImagePrompt("");
+
+    } catch (err: any) {
+      toast.error(err.message || "Failed to generate Image.", "Generation Failed");
+      setError(err.message);
+    } finally {
+      setImageGenerating(false);
+    }
+  };
+
   const togglePlay = (id: string) => {
     const el = audioRefs.current[id];
     if (!el) return;
@@ -674,34 +723,25 @@ export default function StudioPage() {
               audioHistory.map((item, idx) => (
                 <div
                   key={item.id}
-                  className={`group border rounded-2xl p-4 space-y-3 transition-all ${playingId === item.id
+                  className={`group border rounded-2xl p-4 space-y-3 transition-all ${playingId === item.id || item.type === "image"
                     ? "bg-indigo-950/40 border-indigo-500/40"
                     : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
                     }`}
                 >
-                  <audio
-                    ref={el => { audioRefs.current[item.id] = el; }}
-                    src={`data:audio/wav;base64,${item.audioBase64}`}
-                    onEnded={() => handleAudioEnded(item.id)}
-                    onLoadedMetadata={(e) => {
-                      const dur = e.currentTarget.duration;
-                      setAudioDurations(prev => ({ ...prev, [item.id]: dur }));
-                    }}
-                    className="hidden"
-                  />
-
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-slate-600 font-mono">#{audioHistory.length - idx}</span>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${playingId === item.id
-                        ? "text-indigo-300 bg-indigo-500/20 border-indigo-500/30"
-                        : "text-slate-300 bg-slate-800 border-slate-700"
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${item.type === "image"
+                          ? "text-emerald-300 bg-emerald-500/20 border-emerald-500/30"
+                          : playingId === item.id 
+                            ? "text-indigo-300 bg-indigo-500/20 border-indigo-500/30"
+                            : "text-slate-300 bg-slate-800 border-slate-700"
                         }`}>
                         {item.voice}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      {audioDurations[item.id] && (
+                       {item.type !== "image" && audioDurations[item.id] && (
                         <div className="flex items-center gap-1 bg-slate-800/50 px-1.5 py-0.5 rounded border border-slate-700/50">
                           <svg className="w-3 h-3 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                           <span className="text-[10px] font-mono text-slate-400">
@@ -713,46 +753,62 @@ export default function StudioPage() {
                     </div>
                   </div>
 
-                  <p className="text-slate-500 text-xs leading-relaxed line-clamp-2 font-mono">
-                    {item.scriptPreview}
-                  </p>
+                  {item.type === "image" && item.imageUrl ? (
+                     <div className="space-y-3">
+                       <a href={item.imageUrl} target="_blank" rel="noreferrer" className="block w-full overflow-hidden rounded-xl border border-slate-700 hover:border-emerald-500/50 transition-colors">
+                         <img src={item.imageUrl} alt="AI Generated" className="w-full h-auto object-cover" />
+                       </a>
+                       <p className="text-slate-500 text-[10.5px] leading-relaxed line-clamp-3 font-mono">
+                         {item.scriptPreview}
+                       </p>
+                     </div>
+                  ) : (
+                    <>
+                      <audio
+                        ref={el => { audioRefs.current[item.id] = el; }}
+                        src={`data:audio/wav;base64,${item.audioBase64}`}
+                        onEnded={() => handleAudioEnded(item.id)}
+                        onLoadedMetadata={(e) => {
+                          const dur = e.currentTarget.duration;
+                          setAudioDurations(prev => ({ ...prev, [item.id]: dur }));
+                        }}
+                        className="hidden"
+                      />
+                      <p className="text-slate-500 text-xs leading-relaxed line-clamp-2 font-mono">
+                        {item.scriptPreview}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => togglePlay(item.id)}
+                          className={`flex items-center gap-2 flex-1 py-2 px-3 rounded-lg text-xs font-semibold transition-colors ${playingId === item.id
+                            ? "bg-indigo-600 hover:bg-indigo-500 text-white"
+                            : "bg-slate-800 hover:bg-slate-700 text-white"
+                            }`}
+                        >
+                          {playingId === item.id ? (
+                            <>
+                              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path fillRule="evenodd" d="M6.75 5.25a.75.75 0 01.75-.75H9a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H7.5a.75.75 0 01-.75-.75V5.25zm7.5 0A.75.75 0 0115 4.5h1.5a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H15a.75.75 0 01-.75-.75V5.25z" clipRule="evenodd" /></svg>
+                              Pause
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" /></svg>
+                              Play
+                            </>
+                          )}
+                        </button>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => togglePlay(item.id)}
-                      className={`flex items-center gap-2 flex-1 py-2 px-3 rounded-lg text-xs font-semibold transition-colors ${playingId === item.id
-                        ? "bg-indigo-600 hover:bg-indigo-500 text-white"
-                        : "bg-slate-800 hover:bg-slate-700 text-white"
-                        }`}
-                    >
-                      {playingId === item.id ? (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                            <path fillRule="evenodd" d="M6.75 5.25a.75.75 0 01.75-.75H9a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H7.5a.75.75 0 01-.75-.75V5.25zm7.5 0A.75.75 0 0115 4.5h1.5a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H15a.75.75 0 01-.75-.75V5.25z" clipRule="evenodd" />
-                          </svg>
-                          Pause
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                            <path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" />
-                          </svg>
-                          Play
-                        </>
-                      )}
-                    </button>
-
-                    <a
-                      href={`data:audio/wav;base64,${item.audioBase64}`}
-                      download={`voicegen-${item.voice}-${item.id}.wav`}
-                      title="Download WAV"
-                      className="p-2 rounded-lg bg-slate-800 hover:bg-emerald-500/20 border border-transparent hover:border-emerald-500/30 text-slate-400 hover:text-emerald-400 transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                    </a>
-                  </div>
+                        <a
+                          href={`data:audio/wav;base64,${item.audioBase64}`}
+                          download={`voicegen-${item.voice}-${item.id}.wav`}
+                          title="Download WAV"
+                          className="p-2 rounded-lg bg-slate-800 hover:bg-emerald-500/20 border border-transparent hover:border-emerald-500/30 text-slate-400 hover:text-emerald-400 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        </a>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))
             )}
@@ -802,6 +858,14 @@ export default function StudioPage() {
                 <div className="absolute top-0 right-0 px-1 py-[1px] bg-amber-400 text-amber-950 text-[8px] font-black tracking-widest rounded-bl-sm">PRO</div>
                 <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
                 AI Music
+              </button>
+              <button
+                onClick={() => handleModeSwitch("image")}
+                className={`flex items-center justify-center gap-2 px-6 h-11 min-w-[140px] rounded-lg text-sm font-semibold transition-all group relative overflow-hidden ${mode === "image" ? "bg-cyan-600 text-white shadow-lg shadow-cyan-500/20" : "text-slate-400 hover:text-white"
+                  }`}
+              >
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                AI Image
               </button>
             </div>
 
@@ -1178,126 +1242,71 @@ export default function StudioPage() {
 
           {/* ---- MUSIC MODE ---- */}
           {mode === "music" && (
-            <div className="space-y-5 relative">
-              {/* PRO GATE OVERLAY */}
-              {profile?.plan !== "pro" && (
-                <div className="absolute inset-x-0 -inset-y-4 z-20 flex flex-col items-center justify-center backdrop-blur-md bg-slate-950/60 rounded-3xl border border-white/5">
-                   <div className="bg-slate-900 border border-slate-700 p-8 rounded-2xl max-w-sm text-center shadow-2xl relative overflow-hidden">
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-3xl rounded-full"></div>
-                      <div className="absolute bottom-0 left-0 w-32 h-32 bg-teal-500/10 blur-3xl rounded-full"></div>
-                      
-                      <div className="w-16 h-16 bg-gradient-to-tr from-emerald-500 to-teal-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-[0_0_20px_rgba(16,185,129,0.3)]">
-                        <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
-                      </div>
-                      <h3 className="text-xl font-bold text-white mb-2">Unlock AI Music Studio</h3>
-                      <p className="text-sm text-slate-400 mb-6 leading-relaxed">Generate high-fidelity instrumental and lyrical music tracks using Google's <b>Lyria 3</b> Model. Up to 3 minutes of stereo audio.</p>
-                      
-                      <button onClick={handleUpgrade} className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-emerald-500/25 active:scale-95 flex items-center justify-center gap-2">
-                         <span>Go PRO (₹49/mo)</span>
-                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
-                      </button>
-                   </div>
-                </div>
-              )}
+            <div className="space-y-5">
+               <div className="bg-slate-900/60 border border-slate-700 p-12 rounded-2xl text-center shadow-2xl relative overflow-hidden flex flex-col items-center justify-center min-h-[500px]">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 blur-[80px] rounded-full pointer-events-none"></div>
+                  <div className="absolute bottom-0 left-0 w-64 h-64 bg-teal-500/5 blur-[80px] rounded-full pointer-events-none"></div>
+                  
+                  <div className="w-20 h-20 bg-gradient-to-tr from-emerald-500 to-teal-400 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-[0_0_40px_rgba(16,185,129,0.25)] relative z-10">
+                    <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
+                  </div>
+                  <h3 className="text-2xl sm:text-3xl font-black text-white mb-4 relative z-10 tracking-tight">
+                    AI Music Studio <span className="text-emerald-400 block sm:inline mt-1 sm:mt-0">Coming Soon</span>
+                  </h3>
+                  <p className="text-slate-400 mb-3 leading-relaxed max-w-md relative z-10 text-sm sm:text-base">
+                    Google's Lyria 3 production models are currently in a restricted preview phase with specialized billing limits.
+                  </p>
+                  <p className="text-slate-500 text-xs sm:text-sm leading-relaxed max-w-md relative z-10">
+                    Once fully rolled out, Pro users will be able to generate beautiful high-fidelity instrumental and lyrical music tracks natively in your studio natively. Stay tuned!
+                  </p>
+               </div>
+            </div>
+          )}
 
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Inspiration</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { label: "🎮 8-Bit Chiptune", prompt: "A bright chiptune melody in C Major, retro 8-bit video game style.", instr: true },
-                    { label: "🎸 Acoustic Roadtrip", prompt: "An upbeat, feel-good pop song in G major at 120 BPM with bright acoustic guitar strumming, claps.", instr: false },
-                    { label: "🌃 Lofi Hip Hop", prompt: "A lofi hip hop beat with dusty vinyl crackle, mellow Rhodes piano chords, a slow boom-bap drum pattern at 85 BPM.", instr: true },
-                    { label: "🎻 Cinematic Drama", prompt: "An epic cinematic orchestral piece building through sweeping strings and climaxing with a massive wall of sound.", instr: true }
-                  ].map(sp => (
-                    <button
-                      key={sp.label}
-                      onClick={() => {
-                        setMusicPrompt(sp.prompt);
-                        setMusicInstrumental(sp.instr);
-                      }}
-                      disabled={loading || profile?.plan !== "pro"}
-                      className="px-3 py-1.5 text-sm font-medium bg-slate-800/80 hover:bg-emerald-600/20 border border-slate-700 hover:border-emerald-500/50 text-slate-300 hover:text-emerald-300 rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      {sp.label}
-                    </button>
-                  ))}
-                </div>
+          {/* ---- IMAGE MODE ---- */}
+          {mode === "image" && (
+            <div className="space-y-6">
+              <div className="bg-slate-900 border border-slate-700 p-8 rounded-2xl relative overflow-hidden shadow-xl">
+                 <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/10 blur-[80px] rounded-full pointer-events-none"></div>
+                 <h2 className="text-2xl font-black text-white flex items-center gap-3 relative z-10">
+                   <svg className="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                   AI Image Studio
+                 </h2>
+                 <p className="text-slate-400 mt-2 font-medium max-w-xl text-sm relative z-10">
+                   Type a simple idea and our Gemini prompt engineer will heavily detail and stylize it before passing it into our top-tier image generator. No GPU required.
+                 </p>
               </div>
 
-              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-5 relative">
-                <div>
-                  <label className="flex items-center justify-between text-sm font-semibold text-slate-300 mb-2">
-                    Musical Style / Vibe (Required)
-                    <div className="flex items-center gap-2">
-                      <input 
-                        type="checkbox" 
-                        id="instrumental"
-                        checked={musicInstrumental}
-                        onChange={(e) => setMusicInstrumental(e.target.checked)}
-                        className="w-4 h-4 rounded text-emerald-600 bg-slate-800 border-slate-700 outline-none focus:ring-emerald-600 focus:ring-2 focus:ring-offset-slate-900"
-                      />
-                      <label htmlFor="instrumental" className="text-xs font-medium text-slate-400 cursor-pointer hover:text-slate-300">Instrumental Only (No Vocals)</label>
-                    </div>
-                  </label>
-                  <textarea
-                     rows={3}
-                     value={musicPrompt}
-                     onChange={e => setMusicPrompt(e.target.value)}
-                     placeholder="e.g., A dark atmospheric trap beat at 140 BPM with heavy 808 bass, eerie synth pads, sharp hi-hats..."
-                     className="w-full bg-slate-800/80 border border-slate-700 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 rounded-xl px-4 py-3 text-slate-200 placeholder:text-slate-600 outline-none transition-all text-sm resize-none leading-relaxed"
-                  />
-                </div>
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-5">
+                 <div>
+                   <label className="flex items-center justify-between text-sm font-semibold text-slate-300 mb-2">
+                     Describe your image
+                     <span className="text-[10px] text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded">Enhanced Automatically</span>
+                   </label>
+                   <textarea
+                     rows={4}
+                     value={imagePrompt}
+                     onChange={e => setImagePrompt(e.target.value)}
+                     placeholder="e.g., A red cyberpunk car drifting in a neon Tokyo street..."
+                     className="w-full bg-slate-800/80 border border-slate-700 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 rounded-xl px-4 py-3 text-slate-200 placeholder:text-slate-600 outline-none transition-all text-sm resize-none"
+                   />
+                 </div>
 
-                {!musicInstrumental && (
-                  <div>
-                    <label className="flex items-center justify-between text-sm font-semibold text-slate-300 mb-2">
-                      Custom Lyrics (Optional)
-                      <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded ml-2">Tip: Use [Verse] and [Chorus] tags</span>
-                    </label>
-                    <textarea
-                      rows={5}
-                      value={musicLyrics}
-                      onChange={e => setMusicLyrics(e.target.value)}
-                      placeholder={`[Verse 1]\nWalking through the neon glow...\n\n[Chorus]\nWe are the echoes in the night...`}
-                      className="w-full bg-slate-800/80 border border-slate-700 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 rounded-xl px-4 py-3 text-slate-200 placeholder:text-slate-600 outline-none transition-all font-mono text-sm resize-y leading-relaxed min-h-[100px]"
-                    />
-                    <p className="text-xs text-slate-500 mt-2">Leave blank to let AI write the lyrics automatically based on your vibe.</p>
-                  </div>
-                )}
+                 {error && <ErrorBox message={error} />}
 
-                <div className="pt-2">
-                  <label className="block text-sm font-semibold text-slate-300 mb-3">Model & Duration Options</label>
-                  <div className="grid grid-cols-2 gap-3">
-                     <label className={`relative p-4 rounded-xl border-2 flex flex-col items-center justify-center cursor-pointer transition-all ${musicDuration === "30s" ? "border-emerald-500 bg-emerald-500/10" : "border-slate-800 bg-slate-900/50 hover:bg-slate-800/80"}`}>
-                        <input type="radio" value="30s" checked={musicDuration === "30s"} onChange={() => setMusicDuration("30s")} className="sr-only" />
-                        <span className={`text-base font-bold mb-1 ${musicDuration === "30s" ? "text-emerald-400" : "text-slate-300"}`}>30s Clip</span>
-                        <span className="text-xs text-slate-500">lyria-3-clip-preview</span>
-                     </label>
-                     <label className={`relative p-4 rounded-xl border-2 flex flex-col items-center justify-center cursor-pointer transition-all ${musicDuration === "full" ? "border-emerald-500 bg-emerald-500/10" : "border-slate-800 bg-slate-900/50 hover:bg-slate-800/80"}`}>
-                        <input type="radio" value="full" checked={musicDuration === "full"} onChange={() => setMusicDuration("full")} className="sr-only" />
-                        <span className={`text-base font-bold mb-1 ${musicDuration === "full" ? "text-emerald-400" : "text-slate-300"}`}>Full Track</span>
-                        <span className="text-xs text-slate-500 text-center">lyria-3-pro-preview<br/>(Slow!)</span>
-                     </label>
-                  </div>
-                </div>
+                 <button
+                    onClick={handleGenerateImage}
+                    disabled={imageGenerating || !imagePrompt.trim()}
+                    className="w-full flex items-center justify-center gap-3 py-4 bg-gradient-to-r from-cyan-600 to-blue-500 hover:from-cyan-500 hover:to-blue-400 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-cyan-500/20 disabled:shadow-none active:scale-[0.98] disabled:cursor-not-allowed"
+                  >
+                    {imageGenerating ? <><Spinner /> Enhancing & Generating Image…</> : (
+                      <>
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                        Generate Masterpiece
+                      </>
+                    )}
+                  </button>
               </div>
-
-              {error && <ErrorBox message={error} />}
-
-              <button
-                onClick={() => handleGenerateMusic()}
-                disabled={loading || !musicPrompt.trim() || profile?.plan !== "pro"}
-                className="w-full flex items-center justify-center gap-3 py-4 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-emerald-500/20 disabled:shadow-none active:scale-[0.98] disabled:cursor-not-allowed"
-              >
-                {loading ? <><Spinner /> Composing Audio Track…</> : (
-                  <>
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
-                    Generate AI Music
-                  </>
-                )}
-              </button>
             </div>
           )}
         </main>

@@ -81,6 +81,7 @@ interface AudioItem {
   scriptPreview: string;
   audioBase64?: string;
   imageUrl?: string;
+  imageBase64?: string;
   createdAt: Date;
 }
 
@@ -151,6 +152,7 @@ export default function StudioPage() {
   // Image State
   const [imagePrompt, setImagePrompt] = useState("");
   const [imageGenerating, setImageGenerating] = useState(false);
+  const [previewImage, setPreviewImage] = useState<{ url: string; prompt: string } | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
@@ -532,8 +534,7 @@ export default function StudioPage() {
     setError("");
 
     try {
-      // 1. Enhance the prompt using Gemini
-      const res = await fetch("/api/enhance-prompt", {
+      const res = await fetch("/api/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: imagePrompt }),
@@ -541,19 +542,15 @@ export default function StudioPage() {
       const data = await res.json();
 
       if (!res.ok) {
-         throw new Error(data.error || "Failed to enhance prompt");
+         throw new Error(data.error || "Failed to generate image");
       }
-
-      const enhancedPrompt = data.enhancedPrompt || imagePrompt;
-      const seed = Math.floor(Math.random() * 1000000);
-      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
 
       const newItem: AudioItem = {
         id: Date.now().toString(),
         type: "image",
         voice: "Pollinations AI",
-        scriptPreview: enhancedPrompt,
-        imageUrl: url,
+        scriptPreview: data.enhancedPrompt,
+        imageBase64: data.imageBase64,
         createdAt: new Date(),
       };
       
@@ -672,10 +669,10 @@ export default function StudioPage() {
       </header>
 
       {/* BODY: LEFT SIDEBAR + RIGHT CREATOR + PRO SIDEBAR (optional) */}
-      <div className={`flex-1 flex flex-col-reverse lg:flex-row overflow-hidden w-full mx-auto ${ENABLE_PRO_SIDEBAR ? 'max-w-none' : 'max-w-[1400px]'}`}>
+      <div className={`flex-1 flex flex-col-reverse lg:flex-row lg:overflow-hidden w-full mx-auto ${ENABLE_PRO_SIDEBAR ? 'max-w-none' : 'max-w-[1400px]'}`}>
 
         {/* ===== LEFT: AUDIO HISTORY SIDEBAR ===== */}
-        <aside className="w-full lg:w-[340px] shrink-0 border-t lg:border-t-0 lg:border-r border-slate-800 flex flex-col bg-slate-950/60 h-[350px] lg:h-auto lg:max-h-full overflow-hidden">
+        <aside className="w-full lg:w-[340px] shrink-0 border-t lg:border-t-0 lg:border-r border-slate-800 flex flex-col bg-slate-950/60 h-[450px] lg:h-auto lg:max-h-full lg:overflow-hidden">
           <div className="px-5 py-5 border-b border-slate-800 flex items-center justify-between shrink-0">
             <div>
               <h2 className="text-sm font-bold text-white">Generated Audio</h2>
@@ -753,12 +750,26 @@ export default function StudioPage() {
                     </div>
                   </div>
 
-                  {item.type === "image" && item.imageUrl ? (
-                     <div className="space-y-3">
-                       <a href={item.imageUrl} target="_blank" rel="noreferrer" className="block w-full overflow-hidden rounded-xl border border-slate-700 hover:border-emerald-500/50 transition-colors">
-                         <img src={item.imageUrl} alt="AI Generated" className="w-full h-auto object-cover" />
-                       </a>
-                       <p className="text-slate-500 text-[10.5px] leading-relaxed line-clamp-3 font-mono">
+                  {item.type === "image" && (item.imageBase64 || item.imageUrl) ? (
+                     <div className="space-y-2">
+                       <button 
+                         onClick={() => setPreviewImage({ url: item.imageBase64 ? `data:image/jpeg;base64,${item.imageBase64}` : item.imageUrl!, prompt: item.scriptPreview })}
+                         className="group/img relative block w-full aspect-square overflow-hidden rounded-xl border border-slate-700 hover:border-cyan-500/50 transition-all cursor-zoom-in shadow-md"
+                       >
+                         <img 
+                            src={item.imageBase64 ? `data:image/jpeg;base64,${item.imageBase64}` : item.imageUrl} 
+                            alt="AI Generated Preview" 
+                            loading="lazy"
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover/img:scale-105 bg-slate-800" 
+                         />
+                         <div className="absolute inset-0 bg-slate-950/0 group-hover/img:bg-slate-950/30 transition-colors flex items-center justify-center pointer-events-none">
+                            <span className="opacity-0 group-hover/img:opacity-100 transition-all bg-slate-900/80 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 backdrop-blur-md border border-white/10 scale-95 group-hover/img:scale-100 shadow-lg">
+                              <svg className="w-3.5 h-3.5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6" /></svg>
+                              View
+                            </span>
+                         </div>
+                       </button>
+                       <p className="text-slate-400 text-[10.5px] leading-relaxed line-clamp-2 font-mono px-1">
                          {item.scriptPreview}
                        </p>
                      </div>
@@ -816,7 +827,7 @@ export default function StudioPage() {
         </aside>
 
         {/* ===== RIGHT: CREATOR (always visible) ===== */}
-        <main className="flex-1 overflow-y-auto px-4 lg:px-6 py-6 lg:py-8 space-y-6 min-w-0">
+        <main className="flex-1 lg:overflow-y-auto px-4 lg:px-6 py-6 lg:py-8 space-y-6 min-w-0">
           <div>
             <h1 className="text-2xl font-black text-white">Generation Studio</h1>
             <p className="text-slate-500 mt-1 text-sm">Write or generate a director-style script, pick a voice, produce audio.</p>
@@ -824,49 +835,57 @@ export default function StudioPage() {
 
           {/* MODE TABS & SETUP */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex rounded-xl bg-slate-900 border border-slate-800 p-1 gap-1 w-fit shrink-0 overflow-x-auto">
-              <button
-                onClick={() => handleModeSwitch("direct")}
-                className={`flex items-center justify-center gap-2 px-6 h-11 min-w-[140px] rounded-lg text-sm font-semibold transition-all ${mode === "direct" ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "text-slate-400 hover:text-white"
-                  }`}
-              >
-                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
-                Direct TTS
-              </button>
-              <button
-                onClick={() => handleModeSwitch("ai")}
-                className={`flex items-center justify-center gap-2 px-6 h-11 min-w-[140px] rounded-lg text-sm font-semibold transition-all ${mode === "ai" ? "bg-violet-600 text-white shadow-lg shadow-violet-500/20" : "text-slate-400 hover:text-white"
-                  }`}
-              >
-                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
-                AI Script Builder
-              </button>
-              <button
-                onClick={() => handleModeSwitch("broadcast")}
-                className={`flex items-center justify-center gap-2 px-6 h-11 min-w-[140px] rounded-lg text-sm font-semibold transition-all ${mode === "broadcast" ? "bg-pink-600 text-white shadow-lg shadow-pink-500/20" : "text-slate-400 hover:text-white"
-                  }`}
-              >
-                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.829 1.58-1.936a4.5 4.5 0 001.31-.433m-1.5 2.56a12.12 12.12 0 01-3 0m4.5-2.56V15.75" /><path strokeLinecap="round" strokeLinejoin="round" d="M10.875 18v-.192c0-.983-.658-1.829-1.58-1.936a4.5 4.5 0 01-1.31-.433" /></svg>
-                AI Broadcast
-              </button>
-              <button
-                onClick={() => handleModeSwitch("music")}
-                className={`flex items-center justify-center gap-2 px-6 h-11 min-w-[140px] rounded-lg text-sm font-semibold transition-all group relative overflow-hidden ${mode === "music" ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/20" : "text-slate-400 hover:text-white"
-                  }`}
-              >
-                {/* PRO Tag */}
-                <div className="absolute top-0 right-0 px-1 py-[1px] bg-amber-400 text-amber-950 text-[8px] font-black tracking-widest rounded-bl-sm">PRO</div>
-                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
-                AI Music
-              </button>
-              <button
-                onClick={() => handleModeSwitch("image")}
-                className={`flex items-center justify-center gap-2 px-6 h-11 min-w-[140px] rounded-lg text-sm font-semibold transition-all group relative overflow-hidden ${mode === "image" ? "bg-cyan-600 text-white shadow-lg shadow-cyan-500/20" : "text-slate-400 hover:text-white"
-                  }`}
-              >
-                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                AI Image
-              </button>
+            <div className="relative w-full sm:w-auto">
+              <div className="flex rounded-xl bg-slate-900 border border-slate-800 p-1 gap-1 w-full sm:w-fit overflow-x-auto no-scrollbar scroll-smooth relative z-10" style={{ WebkitOverflowScrolling: "touch" }}>
+                <button
+                  onClick={() => handleModeSwitch("direct")}
+                  className={`flex items-center justify-center gap-2 px-6 h-11 min-w-[140px] rounded-lg text-sm font-semibold transition-all shrink-0 ${mode === "direct" ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "text-slate-400 hover:text-white"
+                    }`}
+                >
+                  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
+                  Direct TTS
+                </button>
+                <button
+                  onClick={() => handleModeSwitch("ai")}
+                  className={`flex items-center justify-center gap-2 px-6 h-11 min-w-[140px] rounded-lg text-sm font-semibold transition-all shrink-0 ${mode === "ai" ? "bg-violet-600 text-white shadow-lg shadow-violet-500/20" : "text-slate-400 hover:text-white"
+                    }`}
+                >
+                  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
+                  AI Script Builder
+                </button>
+                <button
+                  onClick={() => handleModeSwitch("broadcast")}
+                  className={`flex items-center justify-center gap-2 px-6 h-11 min-w-[140px] rounded-lg text-sm font-semibold transition-all shrink-0 ${mode === "broadcast" ? "bg-pink-600 text-white shadow-lg shadow-pink-500/20" : "text-slate-400 hover:text-white"
+                    }`}
+                >
+                  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.829 1.58-1.936a4.5 4.5 0 001.31-.433m-1.5 2.56a12.12 12.12 0 01-3 0m4.5-2.56V15.75" /><path strokeLinecap="round" strokeLinejoin="round" d="M10.875 18v-.192c0-.983-.658-1.829-1.58-1.936a4.5 4.5 0 01-1.31-.433" /></svg>
+                  AI Broadcast
+                </button>
+                <button
+                  onClick={() => handleModeSwitch("music")}
+                  className={`flex items-center justify-center gap-2 px-6 h-11 min-w-[140px] rounded-lg text-sm font-semibold transition-all shrink-0 group relative overflow-hidden ${mode === "music" ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/20" : "text-slate-400 hover:text-white"
+                    }`}
+                >
+                  {/* PRO Tag */}
+                  <div className="absolute top-0 right-0 px-1 py-[1px] bg-amber-400 text-amber-950 text-[8px] font-black tracking-widest rounded-bl-sm">PRO</div>
+                  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
+                  AI Music
+                </button>
+                <button
+                  onClick={() => handleModeSwitch("image")}
+                  className={`flex items-center justify-center gap-2 px-6 h-11 min-w-[140px] rounded-lg text-sm font-semibold transition-all shrink-0 group relative overflow-hidden ${mode === "image" ? "bg-cyan-600 text-white shadow-lg shadow-cyan-500/20" : "text-slate-400 hover:text-white"
+                    }`}
+                >
+                  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  AI Image
+                </button>
+              </div>
+              {/* Fade + Scroll Icon for Mobile */}
+              <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-slate-900 to-transparent pointer-events-none sm:hidden z-20 flex items-center justify-end pr-2 rounded-r-xl">
+                 <svg className="w-5 h-5 text-slate-400 animate-pulse shadow-sm" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                 </svg>
+              </div>
             </div>
 
             {/* LENGTH MODE */}
@@ -1407,6 +1426,45 @@ export default function StudioPage() {
           </div>
         </div>
       )}
+
+      {/* FULLSCREEN IMAGE PREVIEW MODAL */}
+      {previewImage && (
+        <div className={`fixed inset-0 z-[100] transition-colors duration-300 flex items-center justify-center p-4 sm:p-8 backdrop-blur-md bg-slate-950/90`}>
+           <div className="absolute inset-0" onClick={() => setPreviewImage(null)}></div>
+           <div className={`relative z-10 w-full max-w-5xl flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-300`}>
+               <div className="relative w-full flex justify-center group/modal">
+                    <img 
+                      src={previewImage.url} 
+                      alt="Generated Artwork Full" 
+                      loading="lazy"
+                      className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-[0_0_60px_rgba(0,0,0,0.6)] border border-slate-800 bg-slate-900"
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    />
+                 {/* Top floating bar inside image view */}
+                 <div className="absolute top-4 right-4 flex items-center gap-3 opacity-100 md:opacity-0 group-hover/modal:opacity-100 transition-opacity drop-shadow-xl">
+                      <a 
+                        href={previewImage.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        download={`voicegen-artwork-${Date.now()}.jpg`}
+                        title="Download High-Res / Open Link"
+                        className="w-10 h-10 flex items-center justify-center bg-slate-900/90 hover:bg-cyan-500/90 backdrop-blur-lg border border-white/20 rounded-full text-white transition-all shadow-xl hover:scale-105 active:scale-95"
+                      >
+                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                      </a>
+                    <button onClick={() => setPreviewImage(null)} title="Close" className="w-10 h-10 flex items-center justify-center bg-slate-900/90 hover:bg-rose-500/90 backdrop-blur-lg border border-white/20 rounded-full text-white transition-all shadow-xl hover:scale-105 active:scale-95 cursor-pointer">
+                       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                 </div>
+             </div>
+             <div className="w-full max-w-3xl bg-slate-900/90 backdrop-blur-xl border border-slate-700/50 p-4 sm:p-5 rounded-2xl shadow-2xl transition-all">
+                 <p className="text-slate-300 font-mono text-sm sm:text-base leading-relaxed text-center">
+                   {previewImage.prompt}
+                 </p>
+             </div>
+         </div>
+      </div>
+     )}
     </div>
   );
 }

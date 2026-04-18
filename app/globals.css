@@ -54,3 +54,12 @@ body {
   background-attachment: fixed;
   min-height: 100vh;
 }
+
+/* Hide scrollbar for swipeable menus */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}

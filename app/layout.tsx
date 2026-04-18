@@ -23,6 +23,11 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "GenBox – Powered by Gemini",
   description: "Transform text into expressive AI voices. Free, powered by Gemini 3.1 Flash TTS.",
+  icons: {
+    icon: "/fav.ico",
+    shortcut: "/fav.ico",
+    apple: "/fav.ico",
+  },
 };
 
 export default function RootLayout({

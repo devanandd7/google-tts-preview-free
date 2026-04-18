@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
-import { FREE_BROADCAST_LIMIT } from "@/lib/constants";
 import { withGeminiRetry } from "@/lib/gemini";
 import { decrypt } from "@/lib/encryption";
 
@@ -47,8 +46,17 @@ export async function POST(req: Request) {
     if (!prompt?.trim()) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
-    if (durationMinutes > 9) {
-      return NextResponse.json({ error: "Duration cannot exceed 9 minutes" }, { status: 400 });
+    if (durationMinutes > 5) {
+      return NextResponse.json({ error: "Duration cannot exceed 5 minutes" }, { status: 400 });
+    }
+
+    // STRICT LIMIT: Max 1 broadcast generation per user to save tokens,
+    // UNLESS the user is a Pro user utilizing their own custom API key.
+    if (user.broadcastCount >= 1 && !(user.plan === "pro" && user.ownApiKey)) {
+      return NextResponse.json(
+        { error: "Broadcast limit reached. You can only generate 1 broadcast. Please add your own API key in Pro Settings to generate more." },
+        { status: 403 }
+      );
     }
 
     // STRICT PRO ONLY GATE
@@ -81,54 +89,87 @@ export async function POST(req: Request) {
     const gender2 = VOICE_GENDERS[voice2] ?? "neutral";
 
     const langInstruction = isHindi
-      ? `IMPORTANT: Write the dialouge in natural, conversational Hindi (Devanagari script). Mix in English words naturally (Hinglish). CRITICAL: Ensure you match the genders when rendering Hindi grammar. ${voice1} is ${gender1} and ${voice2} is ${gender2}. Never break this gender rule.`
-      : `Write the dialogue in natural, fluent English matching the styles of the voices.`;
+      ? `LANGUAGE: Write ALL spoken dialogue in natural, conversational Hindi (Devanagari script). Mix in English words naturally (Hinglish). Match gender strictly: ${voice1} is ${gender1}, ${voice2} is ${gender2}. Use correct gendered Hindi grammar for each speaker at all times.`
+      : `LANGUAGE: Write ALL spoken dialogue in natural, fluent conversational English.`;
 
+    // Target: ~175 words/min for natural speech pacing
     const minWords = durationMinutes * 160;
-    const maxWords = durationMinutes * 190;
+    const maxWords = durationMinutes * 185;
 
     const attemptScriptGen = async (key: string) => {
       const ai = new GoogleGenAI({ apiKey: key });
       return await withGeminiRetry(() =>
         ai.models.generateContent({
           model: "gemini-2.5-flash",
-          contents: `You are an expert podcast scriptwriter. 
+          contents: `You are an expert podcast scriptwriter creating a 2-person broadcast dialogue.
 
-Given a user's idea, write a highly engaging 2-person dialogue broadcast between two speakers.
+## STRICT FORMATTING RULES — MUST FOLLOW EXACTLY:
+1. Every line MUST start with [VoiceName: and end with ]
+2. Example: [Puck: Welcome back everyone, today we explore something fascinating.]
+3. Keep each speaker line SHORT — maximum 200 characters of spoken text per line
+4. Split longer thoughts into multiple short lines for the same speaker
+5. NEVER put colons (:) inside the spoken text — use "—" or rephrase instead
+6. NEVER put brackets ([ or ]) inside the spoken text EXCEPT for the expression tags listed below
+7. Write ONLY the dialogue — no stage directions, no headers, no "Here is the script" intro
+8. Alternate speakers naturally — no speaker should have more than 3 consecutive lines
 
-**CRITICAL INSTRUCTIONS FOR FORMATTING:**
-You must strictly use the format "[VoiceName:" before each line, and "]" to close the line name. No other formatting. Do not output anything before the script. Do not output intro paragraphs or "Here is the script". Simply output the dialogue directly.
+## EXPRESSION TAGS — USE FREELY for maximum natural, human delivery:
+These tags control speech delivery and emotion. Use them inline within any line of spoken text:
 
-Example format:
-[Puck: Welcome back to the show, everyone. Today we have a great topic.]
-[Kore: I am so excited to dive into this. It's been on my mind all week.]
-[Puck: Me too.]
+### Emotion & Tone:
+- [laughs] — burst of laughter
+- [chuckles] — light, brief amusement
+- [sighs] — audible exhale of emotion
+- [nervous laugh] — anxious laughter
+- [whispers] — intimate, hushed voice
+- [excitedly] — high energy, enthusiastic
+- [softly] — gentle, tender tone
+- [nervously] — hesitant, anxious
+- [seriously] — weighted, grave delivery
+- [warmly] — friendly, approachable
+- [surprised] — shocked reaction tone
+- [sadly] — low, mournful delivery
+- [angrily] — firm, raised intensity
+- [proudly] — confident, elevated
 
-DO NOT USE COLONS OR BRACKETS INSIDE THE ACTUAL SPOKEN TEXT. The only brackets should encase the speaker name and their line.
+### Pacing & Rhythm:
+- [slowly] — drawn-out delivery
+- [quickly] — fast-paced speech
+- [pause] — brief natural pause for effect
+- [long pause] — extended dramatic silence
+- [silence] — complete stop
+- [...] — trailing off, unfinished thought
 
-Target length: ${minWords} to ${maxWords} words to fit a ${durationMinutes}-minute broadcast.
-Speaker 1 Name: ${voice1} (Gender: ${gender1})
-Speaker 2 Name: ${voice2} (Gender: ${gender2})
+### Example of great usage:
+[Puck: [excitedly] Yaar, yeh topic toh bahut interesting hai — main bohot excited hun!]
+[Kore: [laughs] Haan, pehle mujhe bhi [sighs] ajeeb laga tha, par ab samajh aa gaya.]
+[Puck: [seriously] Lekin isko genuinely seriously lena chahiye [pause] kyunki yeh sabke liye important hai.]
+[Kore: [softly] Bilkul sahi... [slowly] aur main chahti hun ki log ise samjhein.]
 
-Make it dynamic, emotional, and performable. 
+## AUDIO QUALITY RULES:
+- Use expression tags to add personality, rhythm, and emotion — don't overuse them, keep it natural
+- Alternate between energetic and calm moments for dynamic listening experience
+- Short punchy lines work better than long run-on sentences for spoken audio
+
+## CONTENT:
+Speaker 1: ${voice1} (${gender1})
+Speaker 2: ${voice2} (${gender2})
+Target length: ${minWords}–${maxWords} words for a ${durationMinutes}-minute broadcast
+Topic: ${prompt}
+
 ${langInstruction}
 
-User's topic: ${prompt}`,
+Start the dialogue directly without any preamble:`,
         })
       );
     };
 
     let response;
     try {
+      // Direct call using the active key. No fallback!
       response = await attemptScriptGen(userApiKey || serverApiKey);
     } catch (err: any) {
-      const msg = err?.message?.toLowerCase() || "";
-      if (userApiKey && (msg.includes("denied access") || msg.includes("permission_denied") || msg.includes("api_key_invalid") || msg.includes("quota") || msg.includes("exceeded"))) {
-        console.warn("[Broadcast Script Fallback] User custom key failed. Falling back to server key.");
-        response = await attemptScriptGen(serverApiKey);
-      } else {
-        throw err;
-      }
+      throw err;
     }
 
     const script = response.text;
@@ -136,6 +177,11 @@ User's topic: ${prompt}`,
     if (!script) {
       return NextResponse.json({ error: "Failed to generate broadcast script" }, { status: 500 });
     }
+
+    // Increment broadcastCount on EVERY script generation (prevents quota bypass
+    // where users could call script endpoint unlimited times without generating audio)
+    user.broadcastCount += 1;
+    await user.save();
 
     return NextResponse.json({
       script,

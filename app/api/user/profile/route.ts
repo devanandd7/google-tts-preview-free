@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
+import { decrypt } from "@/lib/encryption";
 
 const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
 
@@ -72,7 +73,9 @@ export async function GET() {
       planStatus: user.planStatus ?? "none",
       directTtsCount: user.directTtsCount,
       aiScriptCount: user.aiScriptCount,
+      broadcastCount: user.broadcastCount,
       hasOwnApiKey: !!user.ownApiKey,
+      ownApiKey: user.ownApiKey ? decrypt(user.ownApiKey) : null,
       planActivatedAt: user.planActivatedAt?.toISOString() ?? null,
       planExpiresAt: expiresAt?.toISOString() ?? null,
       daysLeft,

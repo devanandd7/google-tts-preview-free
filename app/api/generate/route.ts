@@ -151,17 +151,15 @@ export async function POST(req: Request) {
     const audioBuffers: Buffer[] = [];
 
     for (const chunk of scriptChunks) {
-      const lockedChunk = `[VOICE OVERRIDE — STRICT: Use ONLY the prebuilt voice named "${voice}" (${gender}). Do NOT switch gender. Do NOT use any other voice. Render everything below as-is.]\n\n${chunk}`;
-
       let ttsResponse;
       try {
-        ttsResponse = await attemptTTS(activeKey, lockedChunk);
+        ttsResponse = await attemptTTS(activeKey, chunk);
       } catch (err: any) {
         const msg = err?.message?.toLowerCase() || "";
         if (activeKey === userApiKey && (msg.includes("denied access") || msg.includes("permission_denied") || msg.includes("api_key_invalid") || msg.includes("quota") || msg.includes("exceeded"))) {
           console.warn("[TTS Fallback] User custom key failed (auth/quota). Falling back to server key.");
           activeKey = serverApiKey;
-          ttsResponse = await attemptTTS(activeKey, lockedChunk);
+          ttsResponse = await attemptTTS(activeKey, chunk);
         } else {
           throw err;
         }

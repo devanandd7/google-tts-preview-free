@@ -11,14 +11,7 @@ export default function LandingPage() {
       {/* NAV */}
       <nav className="relative z-10 border-b border-slate-800 bg-slate-950/60 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-              </svg>
-            </div>
-            <span className="font-bold text-white text-lg tracking-tight">GenBox</span>
-          </div>
+            <span className="font-black text-white text-2xl tracking-tighter uppercase">GenBox</span>
           <div className="flex items-center gap-4">
             <Link
               href="/blog"
@@ -40,13 +33,7 @@ export default function LandingPage() {
       {/* HERO */}
       <main className="relative z-10 max-w-7xl mx-auto px-6 pt-24 pb-32">
         <div className="max-w-4xl mx-auto text-center space-y-8">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-sm font-medium">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-            </span>
-            Powered by Gemini 3.1 Flash TTS · 100% Free
-          </div>
+          {/* Badge removed as requested */}
 
           <h1 className="text-6xl lg:text-8xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-indigo-100 to-violet-300 leading-none">
             Direct Your<br />

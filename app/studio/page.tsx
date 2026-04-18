@@ -27,8 +27,9 @@ interface UserProfile {
   directTtsCount: number;
   aiScriptCount: number;
   broadcastCount: number;
-  hasOwnApiKey?: boolean;
-  planActivatedAt?: string | null;
+  hasOwnApiKey: boolean;
+  ownApiKey: string | null;
+  planActivatedAt: string | null;
   planExpiresAt?: string | null;
   daysLeft?: number | null;
   paymentCount?: number;
@@ -597,17 +598,11 @@ export default function StudioPage() {
         <div className="h-full flex items-center justify-between">
           <div className="flex items-center gap-4 md:gap-8">
             <Link href="/" className="flex items-center gap-3 group">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 via-indigo-600 to-violet-700 flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.3)] group-hover:shadow-[0_0_30px_rgba(99,102,241,0.5)] transition-all duration-500">
-                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
-                </svg>
-              </div>
               <div className="flex flex-col">
-                <span className="font-black text-white tracking-tighter text-lg leading-tight uppercase">GenBox</span>
+                <span className="font-black text-white tracking-tighter text-2xl leading-tight uppercase">GenBox</span>
                 <span className="text-[10px] text-indigo-400 font-bold tracking-[0.2em] uppercase leading-none">Generative Production Studio</span>
               </div>
             </Link>
-
           </div>
 
           <div className="hidden xl:flex items-center gap-4">
@@ -625,12 +620,11 @@ export default function StudioPage() {
               <div className="hidden md:flex items-center gap-4">
                 {profile.plan === "pro" ? (
                   <div className="flex items-center gap-4 bg-white/[0.02] border border-white/[0.05] pl-4 pr-1 py-1 rounded-2xl">
-                    <div className="flex flex-col">
-                      <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">Active License</span>
-                      <span className="text-[11px] text-white font-mono font-bold uppercase tracking-tighter">Production Grade</span>
-                    </div>
-                    <div className="h-8 w-[1px] bg-white/10 mx-2" />
                     <div className="flex items-center gap-2 pr-3">
+                      <div className="flex flex-col items-end border-r border-white/10 pr-4 mr-1">
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Broadcast</span>
+                        <span className="text-xs font-mono text-pink-400 font-bold">{profile.broadcastCount || 0}/1</span>
+                      </div>
                       <div className="flex flex-col items-end">
                         <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Session</span>
                         <span className="text-xs font-mono text-white font-bold">{sessionTokens.toLocaleString()} tkn</span>
@@ -641,8 +635,13 @@ export default function StudioPage() {
                   <div className="flex items-center gap-4">
                     <div className="flex flex-col items-end hidden lg:flex">
                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Free Account</span>
-                       <span className="text-xs font-mono text-white/70">{profile.directTtsCount}/3 TTS Credits</span>
+                       <div className="flex items-center gap-2">
+                         <span className="text-xs font-mono text-white/70">{profile.directTtsCount}/3 TTS</span>
+                         <span className="text-white/20">|</span>
+                         <span className="text-xs font-mono text-pink-400/80">{profile.broadcastCount || 0}/1 BC</span>
+                       </div>
                     </div>
+                    {/* Hide upgrade button if they are already pro, but if they are here they aren't pro */}
                     <button onClick={handleUpgrade} className="px-5 py-2.5 bg-white text-black text-[11px] font-black rounded-xl hover:bg-indigo-400 hover:text-white transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] active:scale-95 uppercase tracking-widest">
                       Upgrade Studio
                     </button>
@@ -651,7 +650,14 @@ export default function StudioPage() {
               </div>
             )}
             <div className="h-8 w-[1px] bg-white/10 hidden sm:block" />
-            <UserButton />
+            <div className="relative">
+              <UserButton />
+              {profile?.plan === 'pro' && (
+                <div className="absolute -top-1.5 -right-3 px-1.5 py-0.5 bg-emerald-500 text-[8px] font-black text-white rounded-md border border-black z-10 shadow-[0_0_10px_rgba(16,185,129,0.5)] uppercase tracking-tighter leading-none flex items-center justify-center">
+                  PRO
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -793,21 +799,38 @@ export default function StudioPage() {
           <div className="shrink-0 p-4 md:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-6 z-10">
             <div className="flex items-center p-1.5 gap-1 bg-white/[0.02] border border-white/[0.05] rounded-2xl w-full lg:w-fit flex-wrap md:flex-nowrap">
               {[
-                { id: 'direct', label: 'Direct', icon: 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z' },
-                { id: 'ai', label: 'Scripts', icon: 'M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z' },
-                { id: 'broadcast', label: 'Broadcast', icon: 'M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.829 1.58-1.936a4.5 4.5 0 001.31-.433m-1.5 2.56a12.12 12.12 0 01-3 0m4.5-2.56V15.75' },
-                { id: 'music', label: 'Music', icon: 'M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3' },
-                { id: 'image', label: 'Image', icon: 'M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z' },
+                { id: 'direct',    label: 'Direct',    proOnly: false, icon: 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z' },
+                { id: 'ai',        label: 'Scripts',   proOnly: false, icon: 'M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z' },
+                { id: 'broadcast', label: 'Broadcast', proOnly: true,  icon: 'M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.829 1.58-1.936a4.5 4.5 0 001.31-.433m-1.5 2.56a12.12 12.12 0 01-3 0m4.5-2.56V15.75' },
+                { id: 'music',     label: 'Music',     proOnly: true,  icon: 'M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3' },
+                { id: 'image',     label: 'Image',     proOnly: true,  icon: 'M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z' },
               ].map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => handleModeSwitch(tab.id as Mode)}
-                  className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2.5 md:px-5 md:py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-300 ${mode === tab.id ? 'bg-indigo-600 text-white shadow-[0_10px_20px_-5px_rgba(79,70,229,0.5)] z-20' : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'}`}
+                  onClick={() => {
+                    if (tab.proOnly && profile?.plan !== 'pro') {
+                      toast.warning('Upgrade to Pro to unlock Broadcast, Music & Image generation.', 'Pro Feature 🔒');
+                      return;
+                    }
+                    handleModeSwitch(tab.id as Mode);
+                  }}
+                  className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2.5 md:px-5 md:py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-300 relative ${
+                    mode === tab.id
+                      ? 'bg-indigo-600 text-white shadow-[0_10px_20px_-5px_rgba(79,70,229,0.5)] z-20'
+                      : tab.proOnly && profile?.plan !== 'pro'
+                        ? 'text-slate-600 hover:text-slate-500 cursor-pointer'
+                        : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
+                  }`}
                 >
                   <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d={tab.icon} />
                   </svg>
                   <span className="truncate">{tab.label}</span>
+                  {tab.proOnly && profile?.plan !== 'pro' && (
+                    <svg className="w-2.5 h-2.5 shrink-0 opacity-50" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 2C9.243 2 7 4.243 7 7v3H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V12a2 2 0 00-2-2h-1V7c0-2.757-2.243-5-5-5zM9 7c0-1.654 1.346-3 3-3s3 1.346 3 3v3H9V7z" />
+                    </svg>
+                  )}
                 </button>
               ))}
             </div>
@@ -1008,7 +1031,7 @@ export default function StudioPage() {
                                 <input
                                   type="range"
                                   min="1"
-                                  max={lengthMode === "short" ? "2" : "9"}
+                                  max={lengthMode === "short" ? "2" : "5"}
                                   value={scriptDuration}
                                   onChange={e => setScriptDuration(parseInt(e.target.value))}
                                   className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-pink-500"
@@ -1111,6 +1134,7 @@ export default function StudioPage() {
             isPro={profile?.plan === 'pro'}
             onUpgradeClick={handleUpgrade}
             savedKeyStatus={profile?.hasOwnApiKey ? "active" : "none"}
+            initialKey={profile?.ownApiKey}
             onSaveKey={handleSaveApiKey}
             mobileOpen={activeMobileColumn === 'command' || showSettings}
             onCloseMobile={() => { setActiveMobileColumn('stage'); setShowSettings(false); }}

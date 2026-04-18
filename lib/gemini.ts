@@ -23,7 +23,8 @@ export function isOverloadError(err: any): boolean {
     msg.includes("high demand") ||
     msg.includes("429") ||
     msg.includes("resource_exhausted") ||
-    msg.includes("quota") ||
+    // Only match soft overload quota errors, not hard exhausted quota
+    (msg.includes("quota") && !msg.includes("exceeded your current quota") && !msg.includes("quota exceeded for metric")) ||
     msg.includes("overloaded")
   );
 }

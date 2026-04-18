@@ -31,8 +31,9 @@ function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 
 }
 
 // ─── Script Cleaner ───────────────────────────────────────────────────────────
-// Converts [Puck: text with [expression] tags] → "Puck: text with expression tags"
-// Multi-speaker TTS needs clean "Speaker: text" lines — no outer brackets.
+// Converts [Puck: [excitedly] text [laughs] more text] → "Puck: [excitedly] text [laughs] more text"
+// Preserves inline expression tags — Gemini TTS reads them as delivery cues.
+// Only removes the OUTER structural [Speaker: ... ] brackets.
 function cleanScriptForMultiSpeaker(script: string, voice1: string, voice2: string): string {
   const EXPRESSION_TAGS = [
     "laughs", "chuckles", "nervous laugh", "excitedly", "softly", "nervously",
@@ -61,15 +62,14 @@ function cleanScriptForMultiSpeaker(script: string, voice1: string, voice2: stri
     const speaker = isV2 && !isV1 ? voice2 : isV1 ? voice1 : null;
     if (!speaker) continue;
 
-    // Extract spoken text — strip outer trailing ] and clean inline [expression] tags
+    // Extract spoken text — ONLY strip the outer trailing ] to close the [Speaker: ...] structure.
+    // Keep all inline [laughs], [excitedly], etc. — Gemini TTS uses these as delivery cues.
     let text = line
       .slice(colonIdx + 1)
-      .replace(/\]\s*$/, "")  // remove trailing ]
+      .replace(/\]\s*$/, "")  // remove the ONE trailing ] that closes [Speaker: ...]
       .trim();
 
-    // Strip inline expression tags like [laughs] [excitedly] but keep their surrounding text
-    text = text.replace(/\[(laughs|chuckles|nervous laugh|excitedly|softly|nervously|sighs|surprised|seriously|warmly|sadly|angrily|proudly|slowly|quickly|whispers|pause|long pause|silence|\.\.\.)\]/gi, "").trim();
-    // Collapse extra whitespace
+    // Collapse extra whitespace only
     text = text.replace(/\s{2,}/g, " ").trim();
 
     if (!text) continue;
@@ -84,6 +84,7 @@ function cleanScriptForMultiSpeaker(script: string, voice1: string, voice2: stri
 
   return lines.join("\n");
 }
+
 
 // ─── Fallback: Batch by Speaker (2 requests total) ───────────────────────────
 // Groups all lines per speaker, sends 2 parallel TTS requests, then interleaves.

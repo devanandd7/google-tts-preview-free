@@ -101,65 +101,58 @@ export async function POST(req: Request) {
       return await withGeminiRetry(() =>
         ai.models.generateContent({
           model: "gemini-2.5-flash",
-          contents: `You are an expert podcast scriptwriter creating a 2-person broadcast dialogue.
+          contents: `You are a professional LIVE RADIO BROADCAST writer. Create an energetic, natural 2-host show that sounds like a real RJ morning show — NOT a formal podcast, NOT two people reading a textbook.
 
-## STRICT FORMATTING RULES — MUST FOLLOW EXACTLY:
+## STRICT FORMATTING — FOLLOW EXACTLY:
 1. Every line MUST start with [VoiceName: and end with ]
-2. Example: [Puck: Welcome back everyone, today we explore something fascinating.]
-3. Keep each speaker line SHORT — maximum 200 characters of spoken text per line
-4. Split longer thoughts into multiple short lines for the same speaker
-5. NEVER put colons (:) inside the spoken text — use "—" or rephrase instead
-6. NEVER put brackets ([ or ]) inside the spoken text EXCEPT for the expression tags listed below
-7. Write ONLY the dialogue — no stage directions, no headers, no "Here is the script" intro
-8. Alternate speakers naturally — no speaker should have more than 3 consecutive lines
+2. Example: [Puck: Hahaha! Arre yaar, yeh toh mujhe pata hi nahi tha!]
+3. Keep lines SHORT — max 180 characters of spoken text per line
+4. Split longer thoughts into multiple short punchy lines
+5. NEVER put colons (:) inside the spoken text — use "—" or rephrase
+6. Write ONLY the dialogue — no stage directions, no headers, no preamble
+7. Alternate speakers naturally — max 3 consecutive lines per speaker
 
-## EXPRESSION TAGS — USE FREELY for maximum natural, human delivery:
-These tags control speech delivery and emotion. Use them inline within any line of spoken text:
+## THE GOLDEN RULE — WRITE HOW PEOPLE ACTUALLY TALK:
+Embed REAL human sounds and reactions DIRECTLY in the text. Expression tags alone are NOT enough — write the actual sounds:
 
-### Emotion & Tone:
-- [laughs] — burst of laughter
-- [chuckles] — light, brief amusement
-- [sighs] — audible exhale of emotion
-- [nervous laugh] — anxious laughter
-- [whispers] — intimate, hushed voice
-- [excitedly] — high energy, enthusiastic
-- [softly] — gentle, tender tone
-- [nervously] — hesitant, anxious
-- [seriously] — weighted, grave delivery
-- [warmly] — friendly, approachable
-- [surprised] — shocked reaction tone
-- [sadly] — low, mournful delivery
-- [angrily] — firm, raised intensity
-- [proudly] — confident, elevated
+### Write these sounds IN THE TEXT:
+- Laughter: "Hahaha!", "Hehe!", "Ahaha yaar!", "Haha sach mein!"
+- Surprise: "Ohhh!", "Wah wah!", "Arre!", "Wait WHAT?!", "Seriously?!"
+- Excitement: "Yesss!", "Bilkul bilkul!", "Ohoho!"
+- Thinking/Pause: "Hmmmm...", "Matlab...", "Ahhh..."
+- Agreement: "Haan haan!", "Exactly!", "Bilkul!"
+- Shock: "No way!", "Yeh toh kamal ho gaya!"
 
-### Pacing & Rhythm:
-- [slowly] — drawn-out delivery
-- [quickly] — fast-paced speech
-- [pause] — brief natural pause for effect
-- [long pause] — extended dramatic silence
-- [silence] — complete stop
-- [...] — trailing off, unfinished thought
+### ALSO use expression tags alongside written reactions:
+[laughs] [chuckles] [excitedly] [warmly] [softly] [surprised] [seriously] [whispers] [proudly] [slowly] [quickly] [pause] [sighs]
 
-### Example of great usage:
-[Puck: [excitedly] Yaar, yeh topic toh bahut interesting hai — main bohot excited hun!]
-[Kore: [laughs] Haan, pehle mujhe bhi [sighs] ajeeb laga tha, par ab samajh aa gaya.]
-[Puck: [seriously] Lekin isko genuinely seriously lena chahiye [pause] kyunki yeh sabke liye important hai.]
-[Kore: [softly] Bilkul sahi... [slowly] aur main chahti hun ki log ise samjhein.]
+### Energy MUST vary dynamically — never stay flat:
+- HIGH energy opening (RJ waking up the city / audience hook)
+- Warm/personal/funny mid-section
+- Excited peak at interesting reveal or fact
+- Warm memorable sign-off
 
-## AUDIO QUALITY RULES:
-- Use expression tags to add personality, rhythm, and emotion — don't overuse them, keep it natural
-- Alternate between energetic and calm moments for dynamic listening experience
-- Short punchy lines work better than long run-on sentences for spoken audio
+## REFERENCE — GREAT RADIO STYLE:
+[Puck: [excitedly] Good morning dosto! Studio mein aa gaye hain aur aaj ka topic — zabardast hai!]
+[Kore: [warmly] Hahaha! Zabardast isliye ki tumne do cup coffee pee li, Puck?]
+[Puck: [laughs] Arre yaar! Do cup! Warna main toh so jaata studio mein hi!]
+[Kore: [surprised] Wait seriously?! Do cup?! Ohhh yeh toh kuch zyada hi ho gaya!]
+[Puck: [quickly] Bilkul bilkul! Par suno, aaj ka topic sunke tumhari bhi neend ude gi!]
+[Kore: [excitedly] Ohoho! Batao batao! Main ekdum ready hoon!]
+[Puck: [seriously] Aaj baat karenge... [pause] zindagi ke un choti choti khushiyon ki.]
+[Kore: [softly] Ahh... yeh toh dil ko chhu gaya. Sach mein hum in cheezon ko ignore karte hain.]
+[Puck: [warmly] Haan yaar. [sighs] Aur aaj hum isko feel karenge — theek hai?]
+[Kore: [chuckles] Bilkul! Aur listeners — aap bhi apni chai pakad lo, shuru karte hain!]
 
 ## CONTENT:
-Speaker 1: ${voice1} (${gender1})
-Speaker 2: ${voice2} (${gender2})
+Speaker 1: ${voice1} (${gender1}) — energetic, humorous, drives the show with enthusiasm
+Speaker 2: ${voice2} (${gender2}) — warm, witty, great at reactions and depth
 Target length: ${minWords}–${maxWords} words for a ${durationMinutes}-minute broadcast
 Topic: ${prompt}
 
 ${langInstruction}
 
-Start the dialogue directly without any preamble:`,
+Write the broadcast directly — open with HIGH ENERGY:`,
         })
       );
     };

@@ -123,8 +123,17 @@ Embed REAL human sounds and reactions DIRECTLY in the text. Expression tags alon
 - Agreement: "Haan haan!", "Exactly!", "Bilkul!"
 - Shock: "No way!", "Yeh toh kamal ho gaya!"
 
-### ALSO use expression tags alongside written reactions:
-[laughs] [chuckles] [excitedly] [warmly] [softly] [surprised] [seriously] [whispers] [proudly] [slowly] [quickly] [pause] [sighs]
+### GEMINI TTS TAG LIBRARY (USE FREELY FOR VOICE ACTING):
+You have access to the full Gemini 3.1 TTS emotion engine. Use these tags to direct the AI voice acting:
+- Positive/Energetic: [happy] [excitedly] [enthusiasm] [joyful] [amusement] [friendly] [warm] [playful] [proud]
+- Negative/Intense (for drama): [frustration] [annoyance] [tension] [nervousness] [sad] [hostile] [tired] [exhausted]
+- Neutral/Pro: [serious] [informative] [professional] [calm] [thoughtful] [curious] [hesitant]
+- Pacing/Timing: [slow] [very slow] [fast] [very fast] [accelerating] [decelerating] [short pause] [long pause] [dramatic pause]
+- Vocal Texture: [whispers] [shouting] [muttering] [breathy] [hoarse] [booming]
+- Non-Verbal Sounds: [laughs] [giggles] [chuckles] [sighs] [gasps] [uhm] [cough] [snorts]
+- Character Styles: [narrator] [radio dj] [spooky] [gentle] [aggressive]
+
+**INFINITE CUSTOMIZATION**: You can even invent descriptive tags like [like a tired detective in the rain] or [trying not to laugh] and the TTS engine will adapt!
 
 ### Energy MUST vary dynamically — never stay flat:
 - HIGH energy opening (RJ waking up the city / audience hook)
@@ -133,16 +142,16 @@ Embed REAL human sounds and reactions DIRECTLY in the text. Expression tags alon
 - Warm memorable sign-off
 
 ## REFERENCE — GREAT RADIO STYLE:
-[Puck: [excitedly] Good morning dosto! Studio mein aa gaye hain aur aaj ka topic — zabardast hai!]
-[Kore: [warmly] Hahaha! Zabardast isliye ki tumne do cup coffee pee li, Puck?]
-[Puck: [laughs] Arre yaar! Do cup! Warna main toh so jaata studio mein hi!]
-[Kore: [surprised] Wait seriously?! Do cup?! Ohhh yeh toh kuch zyada hi ho gaya!]
-[Puck: [quickly] Bilkul bilkul! Par suno, aaj ka topic sunke tumhari bhi neend ude gi!]
-[Kore: [excitedly] Ohoho! Batao batao! Main ekdum ready hoon!]
-[Puck: [seriously] Aaj baat karenge... [pause] zindagi ke un choti choti khushiyon ki.]
-[Kore: [softly] Ahh... yeh toh dil ko chhu gaya. Sach mein hum in cheezon ko ignore karte hain.]
-[Puck: [warmly] Haan yaar. [sighs] Aur aaj hum isko feel karenge — theek hai?]
-[Kore: [chuckles] Bilkul! Aur listeners — aap bhi apni chai pakad lo, shuru karte hain!]
+[Puck: [radio dj] [excitedly] Good morning dosto! Studio mein aa gaye hain aur aaj ka topic — zabardast hai!]
+[Kore: [warmly] [laughs] Hahaha! Zabardast isliye ki tumne do cup coffee pee li, Puck?]
+[Puck: [defensive] [fast] Arre yaar! Do cup! Warna main toh so jaata studio mein hi!]
+[Kore: [surprised] Wait seriously?! [dramatic pause] Do cup?! Ohhh yeh toh kuch zyada hi ho gaya!]
+[Puck: [confident] Bilkul bilkul! Par suno, aaj ka topic sunke tumhari bhi neend ude gi!]
+[Kore: [eager] Ohoho! Batao batao! Main ekdum ready hoon!]
+[Puck: [serious] [slow] Aaj baat karenge... [long pause] zindagi ke un choti choti khushiyon ki.]
+[Kore: [softly] [thoughtful] Ahh... yeh toh dil ko chhu gaya. Sach mein hum in cheezon ko ignore karte hain.]
+[Puck: [warm] Haan yaar. [sighs] Aur aaj hum isko feel karenge — theek hai?]
+[Kore: [cheerful] Bilkul! Aur listeners — aap bhi apni chai pakad lo, shuru karte hain!]
 
 ## CONTENT:
 Speaker 1: ${voice1} (${gender1}) — energetic, humorous, drives the show with enthusiasm

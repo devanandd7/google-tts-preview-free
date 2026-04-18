@@ -35,12 +35,6 @@ function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 
 // Preserves inline expression tags — Gemini TTS reads them as delivery cues.
 // Only removes the OUTER structural [Speaker: ... ] brackets.
 function cleanScriptForMultiSpeaker(script: string, voice1: string, voice2: string): string {
-  const EXPRESSION_TAGS = [
-    "laughs", "chuckles", "nervous laugh", "excitedly", "softly", "nervously",
-    "sighs", "surprised", "seriously", "warmly", "sadly", "angrily", "proudly",
-    "slowly", "quickly", "whispers", "pause", "long pause", "silence",
-  ];
-
   const lines: string[] = [];
 
   for (const rawLine of script.split("\n")) {
@@ -52,14 +46,12 @@ function cleanScriptForMultiSpeaker(script: string, voice1: string, voice2: stri
 
     const rawName = line.slice(1, colonIdx).trim();
 
-    // Skip expression-only lines like [laughs: ...]
-    const isExprTag = EXPRESSION_TAGS.some(tag => rawName.toLowerCase() === tag);
-    if (isExprTag) continue;
-
     // Match speaker
     const isV2 = rawName.toLowerCase().includes(voice2.toLowerCase());
     const isV1 = rawName.toLowerCase().includes(voice1.toLowerCase());
     const speaker = isV2 && !isV1 ? voice2 : isV1 ? voice1 : null;
+    
+    // If it doesn't match either speaker (e.g. it's an expression tag like [laughs: ...]), skip it
     if (!speaker) continue;
 
     // Extract spoken text — ONLY strip the outer trailing ] to close the [Speaker: ...] structure.
@@ -93,11 +85,6 @@ function groupBySpeaker(
   voice1: string,
   voice2: string
 ): { v1Lines: { idx: number; text: string }[]; v2Lines: { idx: number; text: string }[] } {
-  const EXPRESSION_TAGS = [
-    "laughs", "chuckles", "nervous laugh", "excitedly", "softly", "nervously",
-    "sighs", "surprised", "seriously", "warmly", "sadly", "angrily", "proudly",
-    "slowly", "quickly", "whispers",
-  ];
 
   const v1Lines: { idx: number; text: string }[] = [];
   const v2Lines: { idx: number; text: string }[] = [];
@@ -110,14 +97,15 @@ function groupBySpeaker(
     if (colonIdx === -1) continue;
 
     const rawName = line.slice(1, colonIdx).trim();
-    const isExprTag = EXPRESSION_TAGS.some(tag => rawName.toLowerCase() === tag);
-    if (isExprTag) continue;
-
-    const text = line.slice(colonIdx + 1).replace(/\]\s*$/, "").replace(/\[.*?\]/g, "").trim();
-    if (!text) continue;
-
+    
     const isV2 = rawName.toLowerCase().includes(voice2.toLowerCase());
     const isV1 = rawName.toLowerCase().includes(voice1.toLowerCase());
+    
+    if (!isV1 && !isV2) continue;
+
+    // Do NOT strip expression tags — Gemini TTS can read them even in batch mode
+    const text = line.slice(colonIdx + 1).replace(/\]\s*$/, "").trim();
+    if (!text) continue;
 
     if (isV2 && !isV1) {
       v2Lines.push({ idx, text });

@@ -9,6 +9,8 @@ import {
   getProDailyLimit,
 } from "../../../../lib/usage";
 
+export const dynamic = "force-dynamic";
+
 const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
 
 /** Auto-expire plan if time has passed */
@@ -26,6 +28,7 @@ async function checkAndExpirePlan(user: any) {
 export async function GET() {
   try {
     const { userId, sessionClaims } = await auth();
+    console.log("[Profile Debug] userId:", userId, "email:", sessionClaims?.email || sessionClaims?.primaryEmail);
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useRef, useEffect } from "react";
 import { UserButton, useUser } from "@clerk/nextjs";
@@ -458,6 +458,11 @@ export default function StudioPage() {
       if (data.usage) {
         if (mode === "broadcast") {
            setProfile(prev => prev ? { ...prev, broadcastCount: data.usage.broadcastCount } : null);
+           // Auto-reset so user can create a new broadcast immediately
+           setStage("input");
+           setEditedScript("");
+           setUserIdea("");
+           setError("");
         } else {
            setProfile(prev => prev ? { ...prev, directTtsCount: data.usage.directTtsCount } : null);
         }
@@ -591,8 +596,9 @@ export default function StudioPage() {
   };
 
   const formatTime = (d: Date) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const isBroadcastLimited = profile?.plan !== 'pro' && !profile?.hasOwnApiKey;
-  const broadcastReached = isBroadcastLimited && (profile?.broadcastCount || 0) >= 1;
+  const BROADCAST_LIMIT = 5;
+  const broadcastCount = profile?.broadcastCount || 0;
+  const broadcastReached = broadcastCount >= BROADCAST_LIMIT;
 
 
   const [activeMobileColumn, setActiveMobileColumn] = useState<"vault" | "stage" | "command">("stage");
@@ -631,7 +637,7 @@ export default function StudioPage() {
                     <div className="flex items-center gap-2 pr-3">
                       <div className="flex flex-col items-end border-r border-white/10 pr-4 mr-1">
                         <span className="text-[11px] font-bold text-indigo-300/60 uppercase tracking-widest">Broadcast</span>
-                        <span className="text-sm font-mono text-pink-400 font-bold">{Math.min(profile.broadcastCount || 0, 1)}/1</span>
+                        <span className={`text-sm font-mono font-bold ${broadcastCount >= BROADCAST_LIMIT ? 'text-red-400' : 'text-pink-400'}`}>{Math.min(broadcastCount, BROADCAST_LIMIT)}/{BROADCAST_LIMIT}</span>
                       </div>
                       <div className="flex flex-col items-end">
                         <span className="text-[11px] font-bold text-indigo-300/60 uppercase tracking-widest">Session</span>
@@ -646,7 +652,7 @@ export default function StudioPage() {
                        <div className="flex items-center gap-2">
                          <span className="text-sm font-mono text-white/70">{profile.directTtsCount}/3 TTS</span>
                          <span className="text-white/20">|</span>
-                         <span className="text-sm font-mono text-pink-400/80">{Math.min(profile.broadcastCount || 0, 1)}/1 BC</span>
+                         <span className={`text-sm font-mono font-bold ${broadcastCount >= BROADCAST_LIMIT ? 'text-red-400/80' : 'text-pink-400/80'}`}>{Math.min(broadcastCount, BROADCAST_LIMIT)}/{BROADCAST_LIMIT} BC</span>
                        </div>
                     </div>
                     {/* Hide upgrade button if they are already pro, but if they are here they aren't pro */}
@@ -1045,23 +1051,38 @@ export default function StudioPage() {
                                   className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-pink-500"
                                 />
                               </div>
-                              <button
-                                onClick={() => handleGenerateScript()}
-                                disabled={loading || !userIdea.trim() || voice1 === voice2 || broadcastReached}
-                                className={`w-full md:w-auto h-14 px-10 font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-xl shadow-pink-600/20 
-                                  ${broadcastReached 
-                                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50' 
-                                    : 'bg-pink-600 text-white hover:bg-pink-500 active:scale-95 disabled:opacity-30'}`}
-                              >
-                                {loading ? <Spinner /> : broadcastReached ? 'Broadcast Limit Reached' : 'Design Dialogue'}
-                              </button>
+                              <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                <button
+                                  onClick={() => handleGenerateScript()}
+                                  disabled={loading || !userIdea.trim() || voice1 === voice2 || broadcastReached}
+                                  className={`w-full md:w-auto h-14 px-10 font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-xl shadow-pink-600/20
+                                    ${broadcastReached
+                                      ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
+                                      : 'bg-pink-600 text-white hover:bg-pink-500 active:scale-95 disabled:opacity-30'}`}
+                                >
+                                  {loading ? <Spinner /> : broadcastReached ? `Limit Reached (${BROADCAST_LIMIT}/${BROADCAST_LIMIT})` : 'Design Dialogue'}
+                                </button>
+                                <span className={`text-[10px] font-mono font-bold ${broadcastCount >= BROADCAST_LIMIT ? 'text-red-400' : 'text-slate-600'}`}>
+                                  {Math.min(broadcastCount, BROADCAST_LIMIT)}/{BROADCAST_LIMIT} broadcasts used
+                                </span>
+                              </div>
                            </div>
                         </div>
                       ) : (
                         <div className="space-y-6">
                            <div className="flex items-center justify-between">
                               <span className="text-[10px] font-black text-pink-400 uppercase tracking-[0.2em]">Dialogue Production Script</span>
-                              <button onClick={() => setStage('input')} className="text-[10px] font-black text-slate-500 hover:text-white uppercase tracking-widest transition-colors">← Back to Setup</button>
+                              <div className="flex items-center gap-3">
+                                <span className={`text-[10px] font-mono font-bold ${broadcastCount >= BROADCAST_LIMIT ? 'text-red-400' : 'text-pink-400/70'}`}>
+                                  {Math.min(broadcastCount, BROADCAST_LIMIT)}/{BROADCAST_LIMIT} used
+                                </span>
+                                <button 
+                                  onClick={() => { setStage('input'); setEditedScript(''); setUserIdea(''); setError(''); }}
+                                  className="text-[10px] font-black text-slate-500 hover:text-white uppercase tracking-widest transition-colors border border-white/10 hover:border-white/30 px-3 py-1.5 rounded-lg"
+                                >
+                                  ✕ Clear &amp; Restart
+                                </button>
+                              </div>
                            </div>
                            <textarea
                             rows={16}
@@ -1069,16 +1090,25 @@ export default function StudioPage() {
                             onChange={e => setEditedScript(e.target.value)}
                             className="w-full bg-white/[0.03] border border-white/[0.1] focus:border-pink-500/50 rounded-2xl px-6 py-5 text-white font-mono text-sm leading-relaxed resize-none"
                           />
-                          <button
-                            onClick={handleGenerateAudio}
-                            disabled={audioLoading || !editedScript.trim() || broadcastReached}
-                            className={`w-full h-14 font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-pink-600/20 flex items-center justify-center gap-3
-                              ${broadcastReached 
-                                ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50' 
-                                : 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white active:scale-95 disabled:opacity-30'}`}
-                          >
-                            {audioLoading ? <Spinner /> : broadcastReached ? 'Broadcast Limit Reached' : 'Produce Broadcast Master'}
-                          </button>
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => handleGenerateScript()}
+                              disabled={loading || !userIdea.trim() || voice1 === voice2 || broadcastReached}
+                              className="h-14 px-6 font-black text-[11px] uppercase tracking-widest rounded-2xl transition-all border border-pink-500/40 text-pink-400 hover:bg-pink-500/10 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2 shrink-0"
+                            >
+                              {loading ? <Spinner /> : '↻ New Script'}
+                            </button>
+                            <button
+                              onClick={handleGenerateAudio}
+                              disabled={audioLoading || !editedScript.trim() || broadcastReached}
+                              className={`flex-1 h-14 font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-pink-600/20 flex items-center justify-center gap-3
+                                ${broadcastReached 
+                                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50' 
+                                  : 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white active:scale-95 disabled:opacity-30'}`}
+                            >
+                              {audioLoading ? <Spinner /> : broadcastReached ? `Limit Reached (${BROADCAST_LIMIT}/${BROADCAST_LIMIT})` : 'Produce Broadcast Master'}
+                            </button>
+                          </div>
                         </div>
                       )}
                    </div>

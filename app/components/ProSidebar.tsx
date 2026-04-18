@@ -62,23 +62,7 @@ export function ProSidebar({ isPro, onUpgradeClick, savedKeyStatus = "none", onS
     };
 
     const sidebarContent = (
-        <div className="flex flex-col h-full w-full bg-slate-900 border-l border-slate-800">
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
-                <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                    <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    </svg>
-                    Settings
-                </h2>
-
-                {/* Mobile close button */}
-                {onCloseMobile && (
-                    <button onClick={onCloseMobile} className="lg:hidden p-1 rounded hover:bg-slate-800 text-slate-400">
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                )}
-            </div>
+        <div className="flex flex-col h-full w-full">
 
             <div className="flex-1 overflow-y-auto p-5 relative">
                 {!isPro ? (
@@ -196,20 +180,5 @@ export function ProSidebar({ isPro, onUpgradeClick, savedKeyStatus = "none", onS
         </div>
     );
 
-    return (
-        <>
-            {/* Desktop/Laptop layout: 280px fixed or toggleable sidebar handled by parent struct, this is just content */}
-            <div className="hidden lg:block w-[280px] shrink-0 h-[calc(100vh-4rem)] sticky top-16">
-                {sidebarContent}
-            </div>
-
-            {/* Mobile/Tablet bottom sheet layout */}
-            <div className={`lg:hidden fixed inset-0 z-50 transition-opacity duration-300 ${mobileOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
-                <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={onCloseMobile}></div>
-                <div className={`absolute bottom-0 left-0 right-0 h-[80vh] bg-slate-900 rounded-t-2xl shadow-2xl transition-transform duration-300 transform flex flex-col border-t border-slate-800 ${mobileOpen ? "translate-y-0" : "translate-y-full"}`}>
-                    {sidebarContent}
-                </div>
-            </div>
-        </>
-    );
+    return sidebarContent;
 }

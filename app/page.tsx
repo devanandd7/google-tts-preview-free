@@ -17,9 +17,15 @@ export default function LandingPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
               </svg>
             </div>
-            <span className="font-bold text-white text-lg tracking-tight">VoiceGen AI</span>
+            <span className="font-bold text-white text-lg tracking-tight">GenBox</span>
           </div>
           <div className="flex items-center gap-4">
+            <Link
+              href="/blog"
+              className="text-sm font-semibold text-white/80 hover:text-white transition-colors mr-2"
+            >
+              Blogs
+            </Link>
             <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">Free</span>
             <Link
               href="/studio"

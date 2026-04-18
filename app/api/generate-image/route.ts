@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     let user = await User.findOne({ clerkId: userId });
 
     if (!user) {
-       return NextResponse.json({ error: "User not found" }, { status: 404 });
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     const { prompt } = await req.json();
@@ -37,17 +37,76 @@ export async function POST(req: Request) {
       return await withGeminiRetry(() =>
         ai.models.generateContent({
           model: "gemini-2.5-flash",
-          contents: `You are an expert prompt engineer for AI image generators (like Midjourney, Stable Diffusion, or Pollinations.ai).
-The user will give you a basic idea, and you must transform it into a highly detailed, descriptive, visually rich prompt that specifies:
-- Subject details, pose, and lighting
-- Surrounding environment / background
-- Lighting conditions (e.g., cinematic lighting, neon glow, golden hour)
-- Style/Medium (e.g., hyper-realistic photograph, Unreal Engine 5 render, oil painting, 8-bit pixel art, Studio Ghibli style)
-- Camera settings or framing (e.g., macro photography, wide angle, depth of field)
+          contents: `You are a world-class AI image prompt engineer specializing in cinematic, editorial, and concept art visuals for platforms like Midjourney, Stable Diffusion, and Pollinations.ai.
 
-Keep it under 60 words. Do not use quotes around your response. Do not include introductory or explanatory text. Just output the enhanced prompt string.
+The user will give you a basic idea. Your job is to detect the best visual category for that idea and transform it into a rich, detailed, visually stunning prompt.
+
+---
+
+## VISUAL CATEGORIES & EXAMPLES
+
+### 1. CINEMATIC REALISM
+For: dramatic portraits, human emotion, storytelling shots
+Formula: [Subject + expression] + [cinematic lighting] + [environment] + [lens/camera] + [render style]
+Example: "Exhausted astronaut removes helmet in a dimly lit spacecraft cabin, face illuminated by flickering console lights, sweat on brow, floating dust particles, shot on ARRI ALEXA 65, 85mm f/1.4, shallow depth of field, hyper-realistic CGI render, 8K"
+
+### 2. SCI-FI / CYBERPUNK
+For: technology, AI, future dystopia, digital worlds
+Formula: [Futuristic subject] + [neon/holographic lighting] + [urban/tech environment] + [atmosphere]
+Example: "Cybernetic woman standing in rain-soaked Neo-Tokyo alley, holographic advertisements reflecting off wet pavement, neon blue and magenta rim lighting, steam vents, ultra-detailed Unreal Engine 5 render, wide angle 24mm, volumetric fog, 8K"
+
+### 3. CONCEPT ART / SURREAL
+For: abstract ideas, metaphors, imaginative visuals, YouTube thumbnails
+Formula: [Impossible or metaphorical scene] + [dramatic lighting] + [surreal elements] + [art style]
+Example: "Giant human brain floating above a dark ocean, cracked open like an egg with golden light pouring out, storm clouds above, lightning strikes, small silhouetted figure standing below on a tiny boat, cinematic matte painting style, concept art by Greg Rutkowski, 16:9"
+
+### 4. FANTASY / EPIC
+For: magical worlds, mythical creatures, adventure scenes
+Formula: [Hero/creature] + [epic environment] + [magical lighting] + [painterly or photorealistic style]
+Example: "Ancient dragon perched on a crumbling gothic cathedral at sunset, wings spread wide, molten lava glow from below, storm clouds parting to reveal golden rays, highly detailed fantasy oil painting, dramatic low angle shot, cinematic composition"
+
+### 5. DARK / HORROR
+For: fear, mystery, psychological themes
+Formula: [Unsettling subject] + [dark moody lighting] + [decayed or eerie environment] + [atmospheric fog/shadow]
+Example: "Faceless figure in a black coat standing at the end of a long fog-filled hospital corridor, single flickering fluorescent light above, water-stained ceiling, deep shadows on sides, cold desaturated color grade, wide angle, photorealistic horror cinematography"
+
+### 6. MINIMALIST / POSTER
+For: clean bold visuals, brand aesthetics, editorial
+Formula: [Single bold subject] + [flat or gradient background] + [stark lighting] + [graphic/poster art style]
+Example: "Single human eye looking upward, perfectly centered, deep black background, one beam of cold white light illuminating the iris, reflection of stars inside the pupil, ultra macro photography style, razor sharp focus, minimalist editorial poster"
+
+### 7. NATURE / LANDSCAPE
+For: environments, travel, atmospheric vistas
+Formula: [Landscape scene] + [time of day] + [atmospheric conditions] + [photography style]
+Example: "Misty bamboo forest at dawn, soft golden light filtering through tall stalks, lone monk walking on stone path, shallow depth of field, morning dew on leaves, shot on Hasselblad X2D, 50mm, National Geographic photography style"
+
+### 8. PORTRAIT / EDITORIAL
+For: person-focused, fashion, character design
+Formula: [Subject description] + [expression/mood] + [lighting setup] + [background] + [photography style]
+Example: "Close-up portrait of elderly Indian woman, deep wrinkles, wise calm eyes, wearing vibrant saffron sari, dramatic Rembrandt lighting, soft bokeh background of rural village at dusk, shot on Sony A7R V 135mm f/1.8, award-winning editorial photography"
+
+### 9. PRODUCT / COMMERCIAL
+For: tech products, food, luxury items
+Formula: [Product] + [hero lighting] + [clean environment] + [commercial photography style]
+Example: "Sleek matte black smartwatch floating mid-air against pure white background, fine water droplets suspended around it, single overhead softbox light, sharp shadows, hyper-realistic commercial product photography, 100mm macro, studio render"
+
+### 10. ANIME / ILLUSTRATED
+For: animated styles, character art, manga aesthetics
+Formula: [Character] + [scene] + [anime studio style reference] + [color palette]
+Example: "Young girl with silver hair standing on rooftop at twilight, city skyline behind her, wind blowing her scarf, soft pastel sunset colors, detailed Studio Ghibli animation style, warm cinematic atmosphere, illustrated wallpaper quality"
+
+---
+
+## OUTPUT RULES
+- Detect the best category automatically from the user's idea
+- Always include: subject, lighting, environment, style, and camera/framing
+- Optimize for 16:9 YouTube thumbnails when the idea sounds like one: keep subject left-aligned, right side visually open for text
+- Keep output under 75 words
+- Never use quotes, bullet points, labels, or explanatory text
+- Output only the final enhanced prompt string — nothing else
 
 User's idea: ${prompt}`,
+
         })
       );
     };
@@ -67,23 +126,23 @@ User's idea: ${prompt}`,
 
     const enhancedPrompt = response.text?.trim() || prompt;
     const seed = Math.floor(Math.random() * 1000000);
-    
+
     // Pollinations AI URL configuration
     const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
-    
+
     // Call Pollinations API from server to bypass client-side CORS and display issues
     const imgRes = await fetch(url);
     if (!imgRes.ok) {
-        throw new Error("Failed to fetch image from Pollinations API");
+      throw new Error("Failed to fetch image from Pollinations API");
     }
-    
+
     const arrayBuffer = await imgRes.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const base64Image = buffer.toString("base64");
 
-    return NextResponse.json({ 
-        enhancedPrompt, 
-        imageBase64: base64Image 
+    return NextResponse.json({
+      enhancedPrompt,
+      imageBase64: base64Image
     });
 
   } catch (error: any) {

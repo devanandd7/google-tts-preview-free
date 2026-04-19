@@ -13,6 +13,7 @@ import {
   incrementUsage,
 } from "@/lib/usage";
 import { VOICE_MAPPING, VOICE_GENDERS } from "@/lib/voices";
+import { uploadToDrive } from "@/lib/google-drive";
 
 // Convert raw PCM from Gemini into a proper WAV file with header
 function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 16): Buffer {
@@ -200,8 +201,36 @@ export async function POST(req: Request) {
     const pcmBuffer = Buffer.concat(audioBuffers);
     const wavBuffer = pcmToWav(pcmBuffer);
 
+    // ── Google Drive Auto-Backup ────────────────────────────────────────────────
+    let driveUploadStatus = "none";
+    let driveFileLink = null;
+
+    if ((user.ownDriveKey || user.driveRefreshToken) && user.driveEnabled !== false && user.driveToggles?.audio !== false) {
+      try {
+        const jsonKey = user.ownDriveKey ? decrypt(user.ownDriveKey) : undefined;
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const cleanScript = script.slice(0, 30).replace(/[^a-z0-9]/gi, "_").trim();
+        const fileName = `GenBox_${voice}_${cleanScript || "Audio"}_${timestamp}.wav`;
+        
+        const driveResult = await uploadToDrive(jsonKey, wavBuffer, fileName, "audio/wav", user.driveFolderId, user.driveRefreshToken);
+        driveUploadStatus = "success";
+        driveFileLink = driveResult.webViewLink;
+
+        if (driveResult.detectedFolderId && !user.driveFolderId) {
+          user.driveFolderId = driveResult.detectedFolderId;
+          await user.save();
+        }
+        console.log(`[Drive Upload] Success: ${fileName}`);
+      } catch (error) {
+        console.error("[Drive Upload Error]", error);
+        driveUploadStatus = "failed";
+      }
+    }
+
     return NextResponse.json({
       audioBase64: wavBuffer.toString("base64"),
+      driveUploadStatus,
+      driveFileLink,
       usage: {
         directTtsCount:      user.directTtsCount,
         dailyDirectTtsCount: getDailyCount(user, "direct"),

@@ -40,4 +40,7 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
+
+# secrets
+genbox-1-97eb1c75e9f9.json
+

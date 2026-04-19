@@ -112,6 +112,11 @@ export async function GET() {
 
       hasOwnApiKey: !!user.ownApiKey,
       ownApiKey: user.ownApiKey ? decrypt(user.ownApiKey) : null,
+      hasOwnDriveKey: !!user.ownDriveKey,
+      ownDriveKey: user.ownDriveKey ? decrypt(user.ownDriveKey) : null,
+      driveFolderId: user.driveFolderId || null,
+      driveEnabled: user.driveEnabled ?? true,
+      driveToggles: user.driveToggles ?? { audio: true, broadcast: true, image: true, music: true },
       planActivatedAt: user.planActivatedAt?.toISOString() ?? null,
       planExpiresAt: expiresAt?.toISOString() ?? null,
       daysLeft,

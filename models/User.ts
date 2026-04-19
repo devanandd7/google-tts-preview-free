@@ -35,6 +35,16 @@ export interface IUser extends Document {
   razorpayPaymentId?: string;
   ownApiKey?: string;          // Pro: user's own Gemini API key (encrypted)
   ownDriveKey?: string;        // Pro: user's own Google Drive API key (encrypted)
+  driveFolderId?: string;      // Pro: target folder ID for backups
+  driveEnabled: boolean;
+  driveRefreshToken?: string;  // OAuth2 refresh token for personal Drive
+  driveEmail?: string;         // Connected Google account email
+  driveToggles: {
+    audio: boolean;
+    broadcast: boolean;
+    image: boolean;
+    music: boolean;
+  };
   planActivatedAt?: Date;
   planExpiresAt?: Date;        // 30 days after planActivatedAt
   paymentHistory: IPaymentRecord[];
@@ -80,6 +90,16 @@ const UserSchema = new Schema<IUser>(
     razorpayPaymentId: { type: String },
     ownApiKey:         { type: String },
     ownDriveKey:       { type: String },
+    driveFolderId:     { type: String },
+    driveEnabled:      { type: Boolean, default: true },
+    driveRefreshToken: { type: String },
+    driveEmail:        { type: String },
+    driveToggles:      {
+      audio:     { type: Boolean, default: true },
+      broadcast: { type: Boolean, default: true },
+      image:     { type: Boolean, default: true },
+      music:     { type: Boolean, default: true },
+    },
     planActivatedAt:   { type: Date },
     planExpiresAt:     { type: Date },
     paymentHistory:    { type: [PaymentRecordSchema], default: [] },

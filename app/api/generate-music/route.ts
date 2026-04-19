@@ -5,6 +5,7 @@ import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { decrypt } from "@/lib/encryption";
 import { withGeminiRetry } from "@/lib/gemini";
+import { uploadToDrive } from "@/lib/google-drive";
 
 export const maxDuration = 300;
 
@@ -140,10 +141,39 @@ export async function POST(req: Request) {
     user.musicCount = (user.musicCount ?? 0) + 1;
     await user.save();
 
+    // ── Google Drive Auto-Backup ────────────────────────────────────────────────
+    let driveUploadStatus = "none";
+    let driveFileLink = null;
+
+    if ((user.ownDriveKey || user.driveRefreshToken) && result.audioBase64 && user.driveEnabled !== false && user.driveToggles?.music !== false) {
+      try {
+        const jsonKey = user.ownDriveKey ? decrypt(user.ownDriveKey) : undefined;
+        const buffer = Buffer.from(result.audioBase64, "base64");
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const cleanPrompt = prompt.slice(0, 30).replace(/[^a-z0-9]/gi, "_").trim();
+        const fileName = `GenBox_Music_${cleanPrompt || "Track"}_${timestamp}.mp3`;
+        
+        const driveResult = await uploadToDrive(jsonKey, buffer, fileName, "audio/mpeg", user.driveFolderId, user.driveRefreshToken);
+        driveUploadStatus = "success";
+        driveFileLink = driveResult.webViewLink;
+
+        if (driveResult.detectedFolderId && !user.driveFolderId) {
+          user.driveFolderId = driveResult.detectedFolderId;
+          await user.save();
+        }
+        console.log(`[Drive Upload] Success: ${fileName}`);
+      } catch (error) {
+        console.error("[Drive Upload Error]", error);
+        driveUploadStatus = "failed";
+      }
+    }
+
     return NextResponse.json({
       audioBase64: `data:audio/mp3;base64,${result.audioBase64}`,
       generatedLyrics: result.lyricsOrStructure,
       tokenUsage: result.tokenUsage,
+      driveUploadStatus,
+      driveFileLink,
       usage: {
         musicCount: user.musicCount,
         plan: user.plan,

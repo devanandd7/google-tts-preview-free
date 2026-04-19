@@ -295,6 +295,28 @@ export default function StudioPage() {
 
 
   const [audioHistory, setAudioHistory] = useState<AudioItem[]>([]);
+  const [historyTab, setHistoryTab] = useState<"recent" | "drive">("recent");
+  const [driveFiles, setDriveFiles] = useState<any[]>([]);
+  const [driveLoading, setDriveLoading] = useState(false);
+  const [driveStatus, setDriveStatus] = useState<"idle" | "processing" | "success" | "failed">("idle");
+
+  const fetchDriveFiles = async () => {
+    setDriveLoading(true);
+    try {
+      const res = await fetch("/api/user/list-drive-files");
+      const data = await res.json();
+      if (res.ok) {
+        setDriveFiles(data.files || []);
+      } else {
+        console.error("Drive Fetch Error:", data.error);
+      }
+    } catch (err) {
+      console.error("Drive Network Error:", err);
+    } finally {
+      setDriveLoading(false);
+    }
+  };
+
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
 
@@ -408,6 +430,8 @@ export default function StudioPage() {
     if (!script.trim()) return;
     setAudioLoading(true);
     setError("");
+    setDriveStatus("idle");
+    if (profile?.hasOwnDriveKey) setDriveStatus("processing");
 
     const endpoint = mode === "broadcast" ? "/api/generate-broadcast-audio" : "/api/generate";
     const payload = mode === "broadcast"
@@ -475,7 +499,14 @@ export default function StudioPage() {
            setProfile(prev => prev ? { ...prev, directTtsCount: data.usage.directTtsCount, dailyDirectTtsCount: data.usage.dailyDirectTtsCount ?? prev.dailyDirectTtsCount } : null);
         }
       }
+
+      if (data.driveUploadStatus === "success") {
+        setDriveStatus("success");
+      } else if (data.driveUploadStatus === "failed") {
+        setDriveStatus("failed");
+      }
     } catch (err: any) {
+      setDriveStatus("failed");
       toast.error(err.message || "Failed to generate audio. Please try again.", "Generation Failed");
       setError(err.message);
     } finally {
@@ -485,8 +516,10 @@ export default function StudioPage() {
 
   const handleGenerateMusic = async () => {
     if (!musicPrompt.trim()) return;
-    setLoading(true);
+    setAudioLoading(true);
     setError("");
+    setDriveStatus("idle");
+    if (profile?.hasOwnDriveKey) setDriveStatus("processing");
 
     try {
       const res = await fetch("/api/generate-music", {
@@ -538,11 +571,17 @@ export default function StudioPage() {
       setMusicPrompt("");
       setMusicLyrics("");
       
+      if (data.driveUploadStatus === "success") {
+        setDriveStatus("success");
+      } else if (data.driveUploadStatus === "failed") {
+        setDriveStatus("failed");
+      }
     } catch (err: any) {
+      setDriveStatus("failed");
       toast.error(err.message || "Failed to generate Music.", "Generation Failed");
       setError(err.message);
     } finally {
-      setLoading(false);
+      setAudioLoading(false);
     }
   };
 
@@ -550,6 +589,8 @@ export default function StudioPage() {
     if (!imagePrompt.trim()) return;
     setImageGenerating(true);
     setError("");
+    setDriveStatus("idle");
+    if (profile?.hasOwnDriveKey) setDriveStatus("processing");
 
     try {
       const res = await fetch("/api/generate-image", {
@@ -590,7 +631,13 @@ export default function StudioPage() {
         } : null);
       }
 
+      if (data.driveUploadStatus === "success") {
+        setDriveStatus("success");
+      } else if (data.driveUploadStatus === "failed") {
+        setDriveStatus("failed");
+      }
     } catch (err: any) {
+      setDriveStatus("failed");
       toast.error(err.message || "Failed to generate Image.", "Generation Failed");
       setError(err.message);
     } finally {
@@ -722,124 +769,188 @@ export default function StudioPage() {
         
         {/* === LEFT COLUMN: MEDIA VAULT (History) === */}
         <aside className={`w-full xl:w-[380px] xl:shrink-0 xl:border-r border-white/[0.05] bg-black/20 flex flex-col transition-all duration-500 absolute inset-0 xl:relative z-40 ${activeMobileColumn === 'vault' ? 'translate-x-0 opacity-100' : '-translate-x-full xl:translate-x-0 opacity-0 xl:opacity-100 pointer-events-none xl:pointer-events-auto'}`}>
-          <div className="p-6 border-b border-white/[0.05] flex items-center justify-between bg-black/20 backdrop-blur-xl">
-            <div className="flex flex-col">
-               <h2 className="text-sm font-black text-white uppercase tracking-[0.2em]">Media Vault</h2>
-               <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Session History</span>
-            </div>
-            {audioHistory.length > 0 && (
-              <div className="px-2 py-1 rounded bg-indigo-500/10 border border-indigo-500/20">
-                <span className="text-[10px] font-mono font-bold text-indigo-400">{audioHistory.length}</span>
+          <div className="p-6 border-b border-white/[0.05] flex flex-col gap-4 bg-black/20 backdrop-blur-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col">
+                <h2 className="text-sm font-black text-white uppercase tracking-[0.2em]">Media Vault</h2>
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Session History</span>
               </div>
-            )}
+              {audioHistory.length > 0 && (
+                <div className="px-2 py-1 rounded bg-indigo-500/10 border border-indigo-500/20">
+                  <span className="text-[10px] font-mono font-bold text-indigo-400">{audioHistory.length}</span>
+                </div>
+              )}
+            </div>
+
+            {/* TABS: RECENT vs DRIVE */}
+            <div className="flex p-1 bg-white/[0.03] border border-white/5 rounded-xl">
+              <button 
+                onClick={() => setHistoryTab("recent")}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${historyTab === 'recent' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                Recent
+              </button>
+              <button 
+                onClick={() => {
+                  setHistoryTab("drive");
+                  if (profile?.hasOwnDriveKey) fetchDriveFiles();
+                }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${historyTab === 'drive' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" /></svg>
+                Drive
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 pb-24 xl:pb-4">
-            {audioLoading && (
-              <div className="glass-card rounded-2xl p-5 space-y-4 animate-pulse">
-                <div className="flex items-center justify-between">
-                  <div className="h-4 w-24 bg-white/5 rounded-full" />
-                  <div className="h-3 w-12 bg-white/5 rounded-full" />
-                </div>
-                <div className="h-3 w-full bg-white/5 rounded-full" />
-                <div className="h-3 w-4/5 bg-white/5 rounded-full" />
-                <div className="h-10 w-full bg-white/5 rounded-xl" />
-              </div>
-            )}
-
-            {audioHistory.length === 0 && !audioLoading ? (
-              <div className="flex flex-col items-center justify-center h-full text-center px-8 py-20 space-y-4">
-                <div className="w-16 h-16 rounded-3xl bg-white/[0.02] border border-white/[0.05] flex items-center justify-center opacity-50">
-                  <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-                  </svg>
-                </div>
-                <p className="text-slate-500 text-xs font-bold uppercase tracking-widest leading-relaxed">No production assets found in current session.</p>
-              </div>
-            ) : (
-              audioHistory.map((item, idx) => (
-                <div key={item.id} className={`group glass-card rounded-2xl p-4 transition-all duration-500 ${playingId === item.id ? 'ring-1 ring-indigo-500/50 bg-indigo-500/[0.08]' : ''}`}>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[10px] font-mono font-bold text-slate-500">
-                        {audioHistory.length - idx}
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[11px] font-black text-white uppercase tracking-wider">{item.voice}</span>
-                        <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">{formatTime(item.createdAt)}</span>
-                      </div>
+            {historyTab === "recent" ? (
+              <>
+                {audioLoading && (
+                  <div className="glass-card rounded-2xl p-5 space-y-4 animate-pulse">
+                    <div className="flex items-center justify-between">
+                      <div className="h-4 w-24 bg-white/5 rounded-full" />
+                      <div className="h-3 w-12 bg-white/5 rounded-full" />
                     </div>
-                    <div className="flex items-center gap-1.5">
-                       {item.type !== "image" && audioDurations[item.id] && (
-                        <span className="text-[10px] font-mono text-indigo-400/80 font-bold">{audioDurations[item.id].toFixed(1)}s</span>
+                    <div className="h-3 w-full bg-white/5 rounded-full" />
+                    <div className="h-3 w-4/5 bg-white/5 rounded-full" />
+                    <div className="h-10 w-full bg-white/5 rounded-xl" />
+                  </div>
+                )}
+
+                {audioHistory.length === 0 && !audioLoading ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center px-8 py-20 space-y-4">
+                    <div className="w-16 h-16 rounded-3xl bg-white/[0.02] border border-white/[0.05] flex items-center justify-center opacity-50">
+                      <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                      </svg>
+                    </div>
+                    <p className="text-slate-500 text-xs font-bold uppercase tracking-widest leading-relaxed">No production assets found in current session.</p>
+                  </div>
+                ) : (
+                  audioHistory.map((item, idx) => (
+                    <div key={item.id} className={`group glass-card rounded-2xl p-4 transition-all duration-500 ${playingId === item.id ? 'ring-1 ring-indigo-500/50 bg-indigo-500/[0.08]' : ''}`}>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[10px] font-mono font-bold text-slate-500">
+                            {audioHistory.length - idx}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[11px] font-black text-white uppercase tracking-wider">{item.voice}</span>
+                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">{formatTime(item.createdAt)}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                           {item.type !== "image" && audioDurations[item.id] && (
+                            <span className="text-[10px] font-mono text-indigo-400/80 font-bold">{audioDurations[item.id].toFixed(1)}s</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {item.type === "image" ? (
+                         <div className="space-y-3">
+                           <button 
+                             onClick={() => setPreviewImage({ url: item.imageBase64 ? `data:image/jpeg;base64,${item.imageBase64}` : item.imageUrl!, prompt: item.scriptPreview })}
+                             className="relative w-full aspect-square overflow-hidden rounded-xl border border-white/[0.05] hover:border-indigo-500/50 transition-all duration-700 shadow-2xl group/img"
+                           >
+                             <img 
+                                src={item.imageBase64 ? `data:image/jpeg;base64,${item.imageBase64}` : item.imageUrl} 
+                                alt="AI Asset" 
+                                className="w-full h-full object-cover grayscale-[0.5] group-hover/img:grayscale-0 transition-all duration-700" 
+                             />
+                             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+                                <span className="text-[10px] font-black text-white border border-white/20 px-3 py-1.5 rounded-full backdrop-blur-xl uppercase tracking-widest">Enlarge Asset</span>
+                             </div>
+                           </button>
+                           <p className="text-[10px] text-slate-500 font-medium leading-relaxed line-clamp-2 italic px-1 italic">"{item.scriptPreview}"</p>
+                         </div>
+                      ) : (
+                        <div className="space-y-4">
+                           <audio
+                            ref={el => { audioRefs.current[item.id] = el; }}
+                            src={`data:audio/wav;base64,${item.audioBase64}`}
+                            onEnded={() => handleAudioEnded(item.id)}
+                            className="hidden"
+                          />
+                          <p className="text-[11px] text-slate-400 font-medium leading-relaxed line-clamp-3 font-mono opacity-80">
+                            {item.scriptPreview}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => togglePlay(item.id)}
+                              className={`flex-1 h-10 flex items-center justify-center gap-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${playingId === item.id
+                                ? "bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.4)]"
+                                : "bg-white/5 text-white hover:bg-white/10"
+                                }`}
+                            >
+                              {playingId === item.id ? (
+                                <>
+                                  <div className="flex gap-0.5 items-end h-3">
+                                    <div className="w-0.5 h-full bg-white animate-[bounce_0.6s_infinite]" />
+                                    <div className="w-0.5 h-2/3 bg-white animate-[bounce_0.8s_infinite]" />
+                                    <div className="w-0.5 h-full bg-white animate-[bounce_0.5s_infinite]" />
+                                  </div>
+                                  Pause
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347c-.75.412-1.667-.13-1.667-.986V5.653z" /></svg>
+                                  Play Clip
+                                </>
+                              )}
+                            </button>
+                            <a
+                              href={`data:audio/wav;base64,${item.audioBase64}`}
+                              download={`genbox-prod-${item.voice}-${item.id}.wav`}
+                              className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 border border-transparent hover:border-emerald-500/20 transition-all"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                            </a>
+                          </div>
+                        </div>
                       )}
                     </div>
+                  ))
+                )}
+              </>
+            ) : (
+              <div className="space-y-3">
+                {driveLoading && (
+                  <div className="flex flex-col items-center justify-center py-20 animate-pulse">
+                    <div className="w-8 h-8 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin mb-4" />
+                    <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Scanning Drive Forge...</p>
                   </div>
-
-                  {item.type === "image" ? (
-                     <div className="space-y-3">
-                       <button 
-                         onClick={() => setPreviewImage({ url: item.imageBase64 ? `data:image/jpeg;base64,${item.imageBase64}` : item.imageUrl!, prompt: item.scriptPreview })}
-                         className="relative w-full aspect-square overflow-hidden rounded-xl border border-white/[0.05] hover:border-indigo-500/50 transition-all duration-700 shadow-2xl group/img"
-                       >
-                         <img 
-                            src={item.imageBase64 ? `data:image/jpeg;base64,${item.imageBase64}` : item.imageUrl} 
-                            alt="AI Asset" 
-                            className="w-full h-full object-cover grayscale-[0.5] group-hover/img:grayscale-0 transition-all duration-700" 
-                         />
-                         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
-                            <span className="text-[10px] font-black text-white border border-white/20 px-3 py-1.5 rounded-full backdrop-blur-xl uppercase tracking-widest">Enlarge Asset</span>
-                         </div>
-                       </button>
-                       <p className="text-[10px] text-slate-500 font-medium leading-relaxed line-clamp-2 italic px-1 italic">"{item.scriptPreview}"</p>
-                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                       <audio
-                        ref={el => { audioRefs.current[item.id] = el; }}
-                        src={`data:audio/wav;base64,${item.audioBase64}`}
-                        onEnded={() => handleAudioEnded(item.id)}
-                        className="hidden"
-                      />
-                      <p className="text-[11px] text-slate-400 font-medium leading-relaxed line-clamp-3 font-mono opacity-80">
-                        {item.scriptPreview}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => togglePlay(item.id)}
-                          className={`flex-1 h-10 flex items-center justify-center gap-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${playingId === item.id
-                            ? "bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.4)]"
-                            : "bg-white/5 text-white hover:bg-white/10"
-                            }`}
-                        >
-                          {playingId === item.id ? (
-                            <>
-                              <div className="flex gap-0.5 items-end h-3">
-                                <div className="w-0.5 h-full bg-white animate-[bounce_0.6s_infinite]" />
-                                <div className="w-0.5 h-2/3 bg-white animate-[bounce_0.8s_infinite]" />
-                                <div className="w-0.5 h-full bg-white animate-[bounce_0.5s_infinite]" />
-                              </div>
-                              Pause
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347c-.75.412-1.667-.13-1.667-.986V5.653z" /></svg>
-                              Play Clip
-                            </>
-                          )}
-                        </button>
-                        <a
-                          href={`data:audio/wav;base64,${item.audioBase64}`}
-                          download={`genbox-prod-${item.voice}-${item.id}.wav`}
-                          className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 border border-transparent hover:border-emerald-500/20 transition-all"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-                        </a>
-                      </div>
+                )}
+                
+                {!driveLoading && driveFiles.length === 0 && (
+                  <div className="text-center py-20 px-6 space-y-4">
+                    <div className="w-12 h-12 rounded-2xl bg-white/[0.02] border border-white/[0.05] flex items-center justify-center mx-auto opacity-40">
+                      <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" /></svg>
                     </div>
-                  )}
-                </div>
-              ))
+                    <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">No backup files detected in your Google Drive.</p>
+                  </div>
+                )}
+
+                {!driveLoading && driveFiles.map((file: any) => (
+                  <a 
+                    key={file.id} 
+                    href={file.webViewLink} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-4 p-3 bg-white/[0.03] border border-white/[0.05] rounded-xl hover:bg-white/[0.06] hover:border-indigo-500/30 transition-all group"
+                  >
+                    <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
+                       <svg className="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] text-white font-black truncate group-hover:text-indigo-400 transition-colors">{file.name}</p>
+                      <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">{new Date(file.createdTime).toLocaleDateString()}</p>
+                    </div>
+                    <svg className="w-3.5 h-3.5 text-slate-600 group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                  </a>
+                ))}
+              </div>
             )}
           </div>
         </aside>
@@ -958,6 +1069,7 @@ export default function StudioPage() {
                     accentClass="from-indigo-600 to-indigo-500 hover:scale-[1.02]"
                     isPro={profile?.plan === 'pro' || Boolean(profile?.isAdmin)}
                     language={language}
+                    driveStatus={driveStatus}
                   />
                 </div>
               )}
@@ -1041,6 +1153,7 @@ export default function StudioPage() {
                             accentClass="from-emerald-600 to-emerald-500 shadow-emerald-500/20"
                             isPro={profile?.plan === 'pro' || Boolean(profile?.isAdmin)}
                             language={language}
+                            driveStatus={driveStatus}
                           />
                         </div>
                       )}
@@ -1142,12 +1255,26 @@ export default function StudioPage() {
                             <button
                               onClick={handleGenerateAudio}
                               disabled={audioLoading || !editedScript.trim() || (!isUnlimited && broadcastReached)}
-                              className={`flex-1 h-14 font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-pink-600/20 flex items-center justify-center gap-3
+                              className={`flex-1 h-14 font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-pink-600/20 flex items-center justify-center gap-3 relative
                                 ${(!isUnlimited && broadcastReached) 
                                   ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50' 
                                   : 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white active:scale-95 disabled:opacity-30'}`}
                             >
-                              {audioLoading ? <Spinner /> : (isUnlimited ? 'Produce Broadcast Master' : (broadcastReached ? `Limit Reached (${BROADCAST_LIMIT}/${BROADCAST_LIMIT})` : 'Produce Broadcast Master'))}
+                              {audioLoading ? <Spinner /> : (
+                                <div className="flex flex-col items-center gap-0.5">
+                                   {driveStatus && driveStatus !== 'idle' && (
+                                     <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest border backdrop-blur-md transition-all duration-500 flex items-center gap-1 ${
+                                       driveStatus === 'processing' ? 'bg-pink-500/20 text-pink-400 border-pink-500/30' :
+                                       driveStatus === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                                       'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                                     }`}>
+                                       <div className={`w-1 h-1 rounded-full ${driveStatus === 'processing' ? 'bg-pink-400 animate-pulse' : driveStatus === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                                       {driveStatus === 'processing' ? 'Syncing...' : driveStatus === 'success' ? 'Backed Up' : 'Sync Fail'}
+                                     </div>
+                                   )}
+                                   <span>{isUnlimited ? 'Produce Broadcast Master' : (broadcastReached ? `Limit Reached (${BROADCAST_LIMIT}/${BROADCAST_LIMIT})` : 'Produce Broadcast Master')}</span>
+                                </div>
+                              )}
                             </button>
                           </div>
                         </div>
@@ -1157,18 +1284,73 @@ export default function StudioPage() {
               )}
 
               {mode === "music" && (
-                <div className="glass-panel rounded-[40px] p-10 md:p-20 flex flex-col items-center justify-center border-white/[0.05] min-h-[500px] text-center animate-in zoom-in-95 duration-1000">
-                   <div className="w-20 h-20 md:w-24 md:h-24 rounded-[32px] bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-[0_20px_40px_rgba(16,185,129,0.3)] mb-10 animate-pulse">
-                      <svg className="w-10 h-10 md:w-12 md:h-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
-                   </div>
-                   <h2 className="text-3xl md:text-4xl font-black text-white uppercase tracking-tighter leading-none mb-6">Sonic Composer <br/><span className="text-emerald-500">Restricted Preview</span></h2>
-                   <p className="text-slate-400 font-medium max-w-lg leading-relaxed text-xs md:text-sm uppercase tracking-widest opacity-60">
-                     Our AI orchestration engine for high-fidelity music is currently under deployment. Pro tier will receive early access in the next cycle.
-                   </p>
-                   <div className="mt-12 flex gap-4">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:-0.3s]" />
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:-0.15s]" />
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce" />
+                <div className="space-y-8 animate-in fade-in duration-700">
+                   <div className="glass-panel rounded-3xl p-6 md:p-8 border-white/[0.05]">
+                      <div className="flex flex-col mb-6">
+                         <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Music Composition</span>
+                         <span className="text-xs text-slate-500 font-bold mt-1">Compose high-fidelity AI music with Lyria 3</span>
+                      </div>
+                      <div className="space-y-6">
+                        <div className="space-y-3">
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Melody & Mood Prompt</label>
+                          <textarea
+                            rows={3}
+                            value={musicPrompt}
+                            onChange={e => setMusicPrompt(e.target.value)}
+                            placeholder="e.g., A lo-fi hip hop track with a chill rainy vibe..."
+                            className="w-full bg-white/[0.02] border border-white/[0.08] focus:border-emerald-500/50 rounded-2xl px-6 py-4 text-white outline-none transition-all text-sm leading-relaxed resize-none"
+                          />
+                        </div>
+                        <div className="space-y-3">
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Lyrics (Optional)</label>
+                          <textarea
+                            rows={3}
+                            value={musicLyrics}
+                            onChange={e => setMusicLyrics(e.target.value)}
+                            placeholder="Enter lyrics for the AI to sing..."
+                            className="w-full bg-white/[0.02] border border-white/[0.08] focus:border-emerald-500/50 rounded-2xl px-6 py-4 text-white outline-none transition-all text-sm leading-relaxed resize-none"
+                          />
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.05] flex items-center justify-between">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Duration</span>
+                            <div className="flex bg-black/40 p-1 rounded-xl gap-1">
+                              <button onClick={() => setMusicDuration("30s")} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${musicDuration === '30s' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>30s</button>
+                              <button onClick={() => setMusicDuration("full")} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${musicDuration === 'full' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>Full</button>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => setMusicInstrumental(!musicInstrumental)}
+                            className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${musicInstrumental ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-white/[0.02] border-white/[0.05] text-slate-400'}`}
+                          >
+                            <span className="text-[10px] font-black uppercase tracking-widest">Instrumental Mode</span>
+                            <div className={`w-10 h-5 rounded-full relative transition-colors ${musicInstrumental ? 'bg-emerald-500' : 'bg-slate-700'}`}>
+                              <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${musicInstrumental ? 'right-1' : 'left-1'}`} />
+                            </div>
+                          </button>
+                        </div>
+
+                        <div className="relative pt-4">
+                           {driveStatus && driveStatus !== 'idle' && (
+                             <div className={`absolute top-0 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest border backdrop-blur-md transition-all duration-500 flex items-center gap-1 z-10 ${
+                               driveStatus === 'processing' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                               driveStatus === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                               'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                             }`}>
+                               <div className={`w-1 h-1 rounded-full ${driveStatus === 'processing' ? 'bg-emerald-400 animate-pulse' : driveStatus === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                               {driveStatus === 'processing' ? 'Syncing...' : driveStatus === 'success' ? 'Backed Up' : 'Sync Fail'}
+                             </div>
+                           )}
+                           <button
+                             onClick={handleGenerateMusic}
+                             disabled={audioLoading || !musicPrompt.trim()}
+                             className="w-full h-16 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-emerald-600/20 flex items-center justify-center gap-3"
+                           >
+                             {audioLoading ? <Spinner /> : 'Orchestrate AI Music'}
+                           </button>
+                        </div>
+                      </div>
                    </div>
                 </div>
               )}
@@ -1187,13 +1369,25 @@ export default function StudioPage() {
                         placeholder="Describe the image... e.g., A cinematic shot of a futuristic data center..."
                         className="w-full bg-white/[0.02] border border-white/[0.08] focus:border-cyan-500/50 rounded-2xl px-6 py-5 text-white outline-none transition-all text-sm leading-relaxed resize-none"
                       />
-                      <button
-                        onClick={handleGenerateImage}
-                        disabled={imageGenerating || !imagePrompt.trim()}
-                        className="mt-6 w-full h-14 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-cyan-600/20 flex items-center justify-center gap-3"
-                      >
-                        {imageGenerating ? <><Spinner /> Refining prompt & generating...</> : 'Render Visual Asset'}
-                      </button>
+                      <div className="relative">
+                         {driveStatus && driveStatus !== 'idle' && (
+                           <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest border backdrop-blur-md transition-all duration-500 flex items-center gap-1 z-10 ${
+                             driveStatus === 'processing' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' :
+                             driveStatus === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                             'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                           }`}>
+                             <div className={`w-1 h-1 rounded-full ${driveStatus === 'processing' ? 'bg-cyan-400 animate-pulse' : driveStatus === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                             {driveStatus === 'processing' ? 'Syncing...' : driveStatus === 'success' ? 'Backed Up' : 'Sync Fail'}
+                           </div>
+                         )}
+                        <button
+                          onClick={handleGenerateImage}
+                          disabled={imageGenerating || !imagePrompt.trim()}
+                          className="mt-6 w-full h-14 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-cyan-600/20 flex items-center justify-center gap-3"
+                        >
+                          {imageGenerating ? <><Spinner /> Refining prompt & generating...</> : 'Render Visual Asset'}
+                        </button>
+                      </div>
                    </div>
                 </div>
               )}
@@ -1287,6 +1481,7 @@ function InlineVoiceGenRow({
   accentClass,
   isPro,
   language,
+  driveStatus,
 }: {
   voice: string;
   onVoiceChange: (v: string) => void;
@@ -1296,6 +1491,7 @@ function InlineVoiceGenRow({
   accentClass: string;
   isPro: boolean;
   language: "hindi" | "english";
+  driveStatus?: "idle" | "processing" | "success" | "failed";
 }) {
   const [isPlayingSample, setIsPlayingSample] = useState(false);
   const sampleAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -1369,17 +1565,29 @@ function InlineVoiceGenRow({
       <button
         onClick={onGenerate}
         disabled={loading || disabled}
-        className={`w-full sm:w-[180px] h-12 shrink-0 flex items-center justify-center gap-3 px-8 bg-white text-black disabled:bg-white/5 disabled:text-slate-600 font-black text-[10px] uppercase tracking-[0.2em] rounded-xl transition-all shadow-xl active:scale-95 disabled:cursor-not-allowed hover:bg-indigo-500 hover:text-white group`}
+        className={`w-full sm:w-[180px] h-12 shrink-0 flex items-center justify-center gap-3 px-8 bg-white text-black disabled:bg-white/5 disabled:text-slate-600 font-black text-[10px] uppercase tracking-[0.2em] rounded-xl transition-all shadow-xl active:scale-95 disabled:cursor-not-allowed hover:bg-indigo-500 hover:text-white group relative`}
       >
         {loading ? (
           <Spinner />
         ) : (
-          <>
-            <svg className="w-4 h-4 group-hover:animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-            </svg>
-            Generate
-          </>
+          <div className="flex flex-col items-center gap-1">
+             {driveStatus && driveStatus !== 'idle' && (
+               <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest border backdrop-blur-md transition-all duration-500 flex items-center gap-1 ${
+                 driveStatus === 'processing' ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30' :
+                 driveStatus === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+               }`}>
+                 <div className={`w-1 h-1 rounded-full ${driveStatus === 'processing' ? 'bg-indigo-400 animate-pulse' : driveStatus === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                 {driveStatus === 'processing' ? 'Syncing...' : driveStatus === 'success' ? 'Backed Up' : 'Sync Fail'}
+               </div>
+             )}
+             <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 group-hover:animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                </svg>
+                Generate
+             </div>
+          </div>
         )}
       </button>
     </div>

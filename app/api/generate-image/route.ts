@@ -12,6 +12,7 @@ import {
   getDailyCount,
   incrementUsage,
 } from "@/lib/usage";
+import { uploadToDrive } from "@/lib/google-drive";
 
 export const maxDuration = 300;
 
@@ -192,6 +193,32 @@ User's idea: ${prompt}`,
     const buffer = Buffer.from(arrayBuffer);
     const base64Image = buffer.toString("base64");
 
+    // ── Google Drive Auto-Backup ────────────────────────────────────────────────
+    let driveUploadStatus = "none";
+    let driveFileLink = null;
+
+    if ((user.ownDriveKey || user.driveRefreshToken) && user.driveEnabled !== false && user.driveToggles?.image !== false) {
+      try {
+        const jsonKey = user.ownDriveKey ? decrypt(user.ownDriveKey) : undefined;
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const cleanPrompt = prompt.slice(0, 30).replace(/[^a-z0-9]/gi, "_").trim();
+        const fileName = `GenBox_Image_${cleanPrompt || "Visual"}_${timestamp}.jpg`;
+        
+        const driveResult = await uploadToDrive(jsonKey, buffer, fileName, "image/jpeg", user.driveFolderId, user.driveRefreshToken);
+        driveUploadStatus = "success";
+        driveFileLink = driveResult.webViewLink;
+
+        if (driveResult.detectedFolderId && !user.driveFolderId) {
+          user.driveFolderId = driveResult.detectedFolderId;
+          await user.save();
+        }
+        console.log(`[Drive Upload] Success: ${fileName}`);
+      } catch (error) {
+        console.error("[Drive Upload Error]", error);
+        driveUploadStatus = "failed";
+      }
+    }
+
     // ── Record image generation (daily + all-time) ONLY on success ───────────
     incrementUsage(user, "image");
     await user.save();
@@ -199,6 +226,8 @@ User's idea: ${prompt}`,
     return NextResponse.json({
       enhancedPrompt,
       imageBase64: base64Image,
+      driveUploadStatus,
+      driveFileLink,
       usage: {
         imageCount:      user.imageCount,
         dailyImageCount: getDailyCount(user, "image"),

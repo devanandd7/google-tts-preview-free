@@ -12,6 +12,7 @@ import {
   getDailyCount,
   incrementUsage,
 } from "@/lib/usage";
+import { VOICE_MAPPING, VOICE_GENDERS } from "@/lib/voices";
 
 // Convert raw PCM from Gemini into a proper WAV file with header
 function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 16): Buffer {
@@ -99,14 +100,16 @@ export async function POST(req: Request) {
     // Reset daily counters if UTC date changed
     resetDailyIfNeeded(user);
 
-    const { script, voice = "Kore" } = await req.json();
+    const { script, voice = "Sunidhi" } = await req.json();
 
     if (!script?.trim()) {
       return NextResponse.json({ error: "Missing script" }, { status: 400 });
     }
 
-    // ── Quota check ─────────────────────────────────────────────────────────────
-    if (user.plan === "free") {
+    // ── Quota check (Bypass for Admin) ──────────────────────────────────────────
+    if (isAdmin) {
+      // Admin has no limits
+    } else if (user.plan === "free") {
       if ((user.directTtsCount ?? 0) >= FREE_DIRECT_TTS_LIMIT) {
         return NextResponse.json(
           {
@@ -133,17 +136,8 @@ export async function POST(req: Request) {
     const userApiKey = user.plan === "pro" && user.ownApiKey ? decrypt(user.ownApiKey) : null;
     const serverApiKey = process.env.GEMINI_API_KEY!;
 
-    const VOICE_GENDERS: Record<string, string> = {
-      Kore: "female", Leda: "female", Aoede: "female", Callirrhoe: "female",
-      Autonoe: "female", Despina: "female", Erinome: "female", Laomedeia: "female",
-      Achernar: "female", Schedar: "female", Gacrux: "female", Pulcherrima: "female",
-      Vindemiatrix: "female", Sulafat: "female",
-      Puck: "male", Charon: "male", Fenrir: "male", Enceladus: "male",
-      Iapetus: "male", Umbriel: "male", Algieba: "male", Algenib: "male",
-      Rasalgethi: "male", Alnilam: "male", Achird: "male", Zubenelgenubi: "male",
-      Sadachbia: "male", Sadaltager: "male",
-    };
     const _gender = VOICE_GENDERS[voice] ?? "neutral";
+    const geminiVoiceName = VOICE_MAPPING[voice] || voice;
 
     const attemptTTS = async (key: string, chunkedScript: string) => {
       const ai = new GoogleGenAI({ apiKey: key });
@@ -155,7 +149,7 @@ export async function POST(req: Request) {
             responseModalities: ["AUDIO"],
             speechConfig: {
               voiceConfig: {
-                prebuiltVoiceConfig: { voiceName: voice },
+                prebuiltVoiceConfig: { voiceName: geminiVoiceName },
               },
             },
           },

@@ -12,6 +12,7 @@ import {
   getDailyCount,
   incrementUsage,
 } from "@/lib/usage";
+import { VOICE_MAPPING, VOICE_GENDERS } from "@/lib/voices";
 
 const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
 
@@ -52,18 +53,37 @@ export async function POST(req: Request) {
     // Reset daily counters if UTC date changed
     resetDailyIfNeeded(user);
 
-    // STRICT PRO ONLY GATE
-    if (user.plan !== "pro") {
-      return NextResponse.json(
-        {
-          error: "AI Broadcast features are available for PRO plan users only.",
-          code: "UPGRADE_REQUIRED",
-        },
-        { status: 403 }
-      );
+    // ── Quota check (Bypass for Admin) ──────────────────────────────────────────
+    if (isAdmin) {
+      // Admin has no limits
+    } else {
+      // STRICT PRO ONLY GATE
+      if (user.plan !== "pro") {
+        return NextResponse.json(
+          {
+            error: "AI Broadcast features are available for PRO plan users only.",
+            code: "UPGRADE_REQUIRED",
+          },
+          { status: 403 }
+        );
+      }
+
+      // Daily broadcast limit for Pro users
+      if (isProDailyLimitReached(user, "broadcast")) {
+        return NextResponse.json(
+          {
+            error: `Daily broadcast limit reached (${PRO_DAILY_BROADCAST_LIMIT} per day). Resets at midnight UTC.`,
+            limitReached: true,
+            type: "broadcast",
+            dailyCount: getDailyCount(user, "broadcast"),
+            dailyLimit: PRO_DAILY_BROADCAST_LIMIT,
+          },
+          { status: 403 }
+        );
+      }
     }
 
-    const { prompt, language = "hindi", voice1 = "Puck", voice2 = "Kore", durationMinutes = 1 } = await req.json();
+    const { prompt, language = "hindi", voice1 = "Dev", voice2 = "Sunidhi", durationMinutes = 1 } = await req.json();
 
     if (!prompt?.trim()) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
@@ -72,37 +92,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Duration cannot exceed 5 minutes" }, { status: 400 });
     }
 
-    // ── Daily broadcast limit for Pro users ──────────────────────────────────────
-    if (isProDailyLimitReached(user, "broadcast")) {
-      return NextResponse.json(
-        {
-          error: `Daily broadcast limit reached (${PRO_DAILY_BROADCAST_LIMIT} per day). Resets at midnight UTC.`,
-          limitReached: true,
-          type: "broadcast",
-          dailyCount: getDailyCount(user, "broadcast"),
-          dailyLimit: PRO_DAILY_BROADCAST_LIMIT,
-        },
-        { status: 403 }
-      );
-    }
-
     const userApiKey = user.plan === "pro" && user.ownApiKey ? decrypt(user.ownApiKey) : null;
     const serverApiKey = process.env.GEMINI_API_KEY!;
 
     const isHindi = language === "hindi";
 
-    const VOICE_GENDERS: Record<string, string> = {
-      Kore: "female", Leda: "female", Aoede: "female", Callirrhoe: "female",
-      Autonoe: "female", Despina: "female", Erinome: "female", Laomedeia: "female",
-      Achernar: "female", Schedar: "female", Gacrux: "female", Pulcherrima: "female",
-      Vindemiatrix: "female", Sulafat: "female",
-      Puck: "male", Charon: "male", Fenrir: "male", Enceladus: "male",
-      Iapetus: "male", Umbriel: "male", Algieba: "male", Algenib: "male",
-      Rasalgethi: "male", Alnilam: "male", Achird: "male", Zubenelgenubi: "male",
-      Sadachbia: "male", Sadaltager: "male",
-    };
-    const gender1 = VOICE_GENDERS[voice1] ?? "neutral";
-    const gender2 = VOICE_GENDERS[voice2] ?? "neutral";
+    const gender1 = VOICE_GENDERS[voice1] ?? "male";
+    const gender2 = VOICE_GENDERS[voice2] ?? "female";
 
     const langInstruction = isHindi
       ? `LANGUAGE: Write ALL spoken dialogue in natural, conversational Hindi (Devanagari script). Mix in English words naturally (Hinglish). Match gender strictly: ${voice1} is ${gender1}, ${voice2} is ${gender2}. Use correct gendered Hindi grammar for each speaker at all times.`
@@ -157,16 +153,16 @@ You have access to the full Gemini 3.1 TTS emotion engine. Use these tags to dir
 - Warm memorable sign-off
 
 ## REFERENCE — GREAT RADIO STYLE:
-[Puck: [radio dj] [excitedly] Good morning dosto! Studio mein aa gaye hain aur aaj ka topic — zabardast hai!]
-[Kore: [warmly] [laughs] Hahaha! Zabardast isliye ki tumne do cup coffee pee li, Puck?]
-[Puck: [defensive] [fast] Arre yaar! Do cup! Warna main toh so jaata studio mein hi!]
-[Kore: [surprised] Wait seriously?! [dramatic pause] Do cup?! Ohhh yeh toh kuch zyada hi ho gaya!]
-[Puck: [confident] Bilkul bilkul! Par suno, aaj ka topic sunke tumhari bhi neend ude gi!]
-[Kore: [eager] Ohoho! Batao batao! Main ekdum ready hoon!]
-[Puck: [serious] [slow] Aaj baat karenge... [long pause] zindagi ke un choti choti khushiyon ki.]
-[Kore: [softly] [thoughtful] Ahh... yeh toh dil ko chhu gaya. Sach mein hum in cheezon ko ignore karte hain.]
-[Puck: [warm] Haan yaar. [sighs] Aur aaj hum isko feel karenge — theek hai?]
-[Kore: [cheerful] Bilkul! Aur listeners — aap bhi apni chai pakad lo, shuru karte hain!]
+[Dev: [radio dj] [excitedly] Good morning dosto! Studio mein aa gaye hain aur main hoon aapka host Dev, aur mere saath hain Sunidhi!]
+[Sunidhi: [warmly] [laughs] Hahaha! Shukriya Dev! Aaj ka topic waise ekdum zabardast hai, haina?]
+[Dev: [defensive] [fast] Arre bilkul! Warna main toh so jaata studio mein hi!]
+[Sunidhi: [surprised] Wait seriously?! [dramatic pause] Dev, tumne do cup coffee nahi pee?]
+[Dev: [confident] Bilkul bilkul! Par suno, aaj ka topic sunke tumhari bhi neend ude gi!]
+[Sunidhi: [eager] Ohoho! Batao batao Dev! Main ekdum ready hoon!]
+[Dev: [serious] [slow] Aaj baat karenge... [long pause] zindagi ke un choti choti khushiyon ki.]
+[Sunidhi: [softly] [thoughtful] Ahh... Dev, yeh toh dil ko chhu gaya. Sach mein hum in cheezon ko ignore karte hain.]
+[Dev: [warm] Haan yaar Sunidhi. [sighs] Aur aaj hum isko feel karenge — theek hai?]
+[Sunidhi: [cheerful] Bilkul! Aur listeners — aap bhi apni chai pakad lo, main aur Dev shuru karte hain!]
 
 ## CONTENT:
 Speaker 1: ${voice1} (${gender1}) — energetic, humorous, drives the show with enthusiasm

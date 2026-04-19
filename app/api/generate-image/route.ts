@@ -54,8 +54,10 @@ export async function POST(req: Request) {
     // Reset daily counters if UTC date changed
     resetDailyIfNeeded(user);
 
-    // ── Daily image limit for Pro users ─────────────────────────────────────────
-    if (user.plan === "pro" && isProDailyLimitReached(user, "image")) {
+    // ── Quota check (Bypass for Admin) ──────────────────────────────────────────
+    if (isAdmin) {
+      // Admin has no limits
+    } else if (user.plan === "pro" && isProDailyLimitReached(user, "image")) {
       return NextResponse.json(
         {
           error: `Daily image limit reached (${PRO_DAILY_IMAGE_LIMIT} per day). Resets at midnight UTC.`,

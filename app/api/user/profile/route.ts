@@ -44,8 +44,8 @@ export async function GET() {
     }
 
     // ── Still not found — auto-create ──
+    const isAdmin = ADMIN_EMAILS.includes(email);
     if (!user) {
-      const isAdmin = ADMIN_EMAILS.includes(email);
       user = await User.create({
         clerkId: userId,
         email,
@@ -56,6 +56,19 @@ export async function GET() {
           ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
           : undefined,
       });
+    } else {
+      // Always sync email and upgrade admin to Pro if not already
+      let needsSave = false;
+      if (user.email !== email) {
+        user.email = email;
+        needsSave = true;
+      }
+      if (isAdmin && user.plan !== "pro") {
+        user.plan = "pro";
+        user.planStatus = "active";
+        needsSave = true;
+      }
+      if (needsSave) await user.save();
     }
 
     // ── Reset daily counters if new UTC day ──
@@ -68,9 +81,15 @@ export async function GET() {
       ? Math.max(0, Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
       : null;
 
+    // ── Ensure Admin always has Pro plan in the response ──
+    const plan = isAdmin ? "pro" : (user.plan ?? "free");
+    const planStatus = isAdmin ? "active" : (user.planStatus ?? "none");
+
     return NextResponse.json({
-      plan: user.plan,
-      planStatus: user.planStatus ?? "none",
+      plan,
+      planStatus,
+      isAdmin,
+      email: user.email,
 
       // All-time totals
       directTtsCount:  user.directTtsCount  ?? 0,
@@ -85,10 +104,10 @@ export async function GET() {
       dailyBroadcastCount:  getDailyCount(user, "broadcast"),
       dailyImageCount:      getDailyCount(user, "image"),
       proLimits: {
-        directTts:  getProDailyLimit("direct"),
-        aiScript:   getProDailyLimit("aiScript"),
-        broadcast:  getProDailyLimit("broadcast"),
-        image:      getProDailyLimit("image"),
+        directTts:  isAdmin ? 999999 : getProDailyLimit("direct"),
+        aiScript:   isAdmin ? 999999 : getProDailyLimit("aiScript"),
+        broadcast:  isAdmin ? 999999 : getProDailyLimit("broadcast"),
+        image:      isAdmin ? 999999 : getProDailyLimit("image"),
       },
 
       hasOwnApiKey: !!user.ownApiKey,

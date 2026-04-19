@@ -12,6 +12,7 @@ import {
   getDailyCount,
   incrementUsage,
 } from "@/lib/usage";
+import { VOICE_MAPPING, VOICE_GENDERS } from "@/lib/voices";
 
 const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
 
@@ -52,14 +53,16 @@ export async function POST(req: Request) {
     // Reset daily counters if UTC date changed
     resetDailyIfNeeded(user);
 
-    const { prompt, language = "hindi", voice = "Kore", durationMinutes = 1 } = await req.json();
+    const { prompt, language = "hindi", voice = "Sunidhi", durationMinutes = 1 } = await req.json();
 
     if (!prompt?.trim()) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
 
-    // ── Quota check ─────────────────────────────────────────────────────────────
-    if (user.plan === "free") {
+    // ── Quota check (Bypass for Admin) ──────────────────────────────────────────
+    if (isAdmin) {
+      // Admin has no limits
+    } else if (user.plan === "free") {
       if ((user.aiScriptCount ?? 0) >= FREE_AI_SCRIPT_LIMIT) {
         return NextResponse.json(
           {
@@ -88,17 +91,8 @@ export async function POST(req: Request) {
 
     const isHindi = language === "hindi";
 
-    const VOICE_GENDERS: Record<string, string> = {
-      Kore: "female", Leda: "female", Aoede: "female", Callirrhoe: "female",
-      Autonoe: "female", Despina: "female", Erinome: "female", Laomedeia: "female",
-      Achernar: "female", Schedar: "female", Gacrux: "female", Pulcherrima: "female",
-      Vindemiatrix: "female", Sulafat: "female",
-      Puck: "male", Charon: "male", Fenrir: "male", Enceladus: "male",
-      Iapetus: "male", Umbriel: "male", Algieba: "male", Algenib: "male",
-      Rasalgethi: "male", Alnilam: "male", Achird: "male", Zubenelgenubi: "male",
-      Sadachbia: "male", Sadaltager: "male",
-    };
     const gender = VOICE_GENDERS[voice] ?? "neutral";
+    const geminiVoiceName = VOICE_MAPPING[voice] || voice;
 
     const langInstruction = isHindi
       ? `IMPORTANT: Write the TRANSCRIPT section in natural, conversational Hindi (Devanagari script). Mix in a few English words naturally where Indians commonly do (Hinglish style is fine). The Audio Profile, Scene, and Director's Notes sections can be in English, but the TRANSCRIPT must be in Hindi.\nCRITICAL RULE: The narrator is a ${gender}. You MUST write all Hindi verbs, adjectives, and pronouns from a strictly ${gender} perspective (e.g., if female, use 'मैं जाती हूँ', 'मैं खुश हूँ'; if male, use 'मैं जाता हूँ'). NEVER break this gender rule.`
@@ -117,7 +111,8 @@ export async function POST(req: Request) {
 Given a user's idea, generate a fully-formed, emotionally expressive TTS director-style script with ALL of these sections:
 
 **# AUDIO PROFILE**
-Give the narrator/character a name and role (e.g., "Rajesh — Warm Storyteller / Fatherly Figure"). Define their personality, age, and speaking style briefly.
+Name: ${voice}. Role: Warm Storyteller / Character role based on the idea. Define their personality, age, and speaking style briefly.
+CRITICAL: The narrator MUST introduce themselves as "${voice}" or refer to themselves by this name within the script naturally (e.g., "Namaste, main hoon ${voice}..." or "Hi, I'm ${voice}...").
 
 **## THE SCENE**  
 Describe the physical environment, time of day, mood, and emotional atmosphere in 2–3 vivid sentences. This sets the stage for the performance.

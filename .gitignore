@@ -16,7 +16,9 @@
 # next.js
 /.next/
 /out/
-
+public/samples/broadcast
+public/samples/english
+public/samples/hindi
 # production
 /build
 

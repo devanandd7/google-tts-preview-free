@@ -16,6 +16,8 @@ import {
   PRO_DAILY_IMAGE_LIMIT,
 } from "@/lib/constants";
 
+export const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
+
 export type UsageType = "direct" | "aiScript" | "broadcast" | "image";
 
 // ─── Internal helpers ──────────────────────────────────────────────────────────
@@ -77,6 +79,11 @@ export function getDailyCount(user: IUser, type: UsageType): number {
  * Always call `resetDailyIfNeeded` first.
  */
 export function isProDailyLimitReached(user: IUser, type: UsageType): boolean {
+  // Global admin bypass: No limits for admin emails!
+  const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
+  if (user.email && ADMIN_EMAILS.includes(user.email)) {
+    return false;
+  }
   return getDailyCount(user, type) >= getProDailyLimit(type);
 }
 

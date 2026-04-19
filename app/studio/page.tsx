@@ -24,6 +24,7 @@ type Stage = "input" | "review";
 interface UserProfile {
   plan: "free" | "pro";
   planStatus: "active" | "expired" | "none";
+  isAdmin?: boolean;
   // All-time totals
   directTtsCount: number;
   aiScriptCount: number;
@@ -44,6 +45,8 @@ interface UserProfile {
   };
   hasOwnApiKey: boolean;
   ownApiKey: string | null;
+  hasOwnDriveKey: boolean;
+  ownDriveKey: string | null;
   planActivatedAt: string | null;
   planExpiresAt?: string | null;
   daysLeft?: number | null;
@@ -56,35 +59,35 @@ interface VoiceEntry { name: string; gender: "female" | "male" }
 
 const VOICE_LIST: VoiceEntry[] = [
   // Female
-  { name: "Kore", gender: "female" },
-  { name: "Leda", gender: "female" },
-  { name: "Aoede", gender: "female" },
-  { name: "Callirrhoe", gender: "female" },
-  { name: "Autonoe", gender: "female" },
-  { name: "Despina", gender: "female" },
-  { name: "Erinome", gender: "female" },
-  { name: "Laomedeia", gender: "female" },
-  { name: "Achernar", gender: "female" },
-  { name: "Schedar", gender: "female" },
-  { name: "Gacrux", gender: "female" },
-  { name: "Pulcherrima", gender: "female" },
-  { name: "Vindemiatrix", gender: "female" },
-  { name: "Sulafat", gender: "female" },
+  { name: "Sunidhi", gender: "female" },
+  { name: "Priyanka", gender: "female" },
+  { name: "Priya", gender: "female" },
+  { name: "Devanshi", gender: "female" },
+  { name: "Ananya", gender: "female" },
+  { name: "Shreya", gender: "female" },
+  { name: "Kavya", gender: "female" },
+  { name: "Neha", gender: "female" },
+  { name: "Riya", gender: "female" },
+  { name: "Sneha", gender: "female" },
+  { name: "Aditi", gender: "female" },
+  { name: "Pooja", gender: "female" },
+  { name: "Shruti", gender: "female" },
+  { name: "Meera", gender: "female" },
   // Male
-  { name: "Puck", gender: "male" },
-  { name: "Charon", gender: "male" },
-  { name: "Fenrir", gender: "male" },
-  { name: "Enceladus", gender: "male" },
-  { name: "Iapetus", gender: "male" },
-  { name: "Umbriel", gender: "male" },
-  { name: "Algieba", gender: "male" },
-  { name: "Algenib", gender: "male" },
-  { name: "Rasalgethi", gender: "male" },
-  { name: "Alnilam", gender: "male" },
-  { name: "Achird", gender: "male" },
-  { name: "Zubenelgenubi", gender: "male" },
-  { name: "Sadachbia", gender: "male" },
-  { name: "Sadaltager", gender: "male" },
+  { name: "Dev", gender: "male" },
+  { name: "Ram", gender: "male" },
+  { name: "Raushan", gender: "male" },
+  { name: "Devsheel", gender: "male" },
+  { name: "Aryan", gender: "male" },
+  { name: "Kabir", gender: "male" },
+  { name: "Rohan", gender: "male" },
+  { name: "Rahul", gender: "male" },
+  { name: "Vikram", gender: "male" },
+  { name: "Aditya", gender: "male" },
+  { name: "Karan", gender: "male" },
+  { name: "Arjun", gender: "male" },
+  { name: "Sameer", gender: "male" },
+  { name: "Aman", gender: "male" },
 ];
 
 const FEMALE_VOICES = VOICE_LIST.filter(v => v.gender === "female");
@@ -102,11 +105,11 @@ interface AudioItem {
 }
 
 const VOICES = [
-  "Kore", "Puck", "Charon", "Fenrir", "Leda", "Aoede", "Callirrhoe", "Autonoe",
-  "Enceladus", "Iapetus", "Umbriel", "Algieba", "Despina", "Erinome", "Algenib",
-  "Rasalgethi", "Laomedeia", "Achernar", "Alnilam", "Schedar", "Gacrux",
-  "Pulcherrima", "Achird", "Zubenelgenubi", "Vindemiatrix", "Sadachbia",
-  "Sadaltager", "Sulafat",
+  "Sunidhi", "Dev", "Ram", "Raushan", "Priyanka", "Priya", "Devanshi", "Ananya",
+  "Devsheel", "Aryan", "Kabir", "Rohan", "Shreya", "Kavya", "Rahul",
+  "Vikram", "Neha", "Riya", "Aditya", "Sneha", "Aditi",
+  "Pooja", "Karan", "Arjun", "Shruti", "Sameer",
+  "Aman", "Meera",
 ];
 
 const SAMPLE_PROMPTS = [
@@ -155,9 +158,9 @@ export default function StudioPage() {
   const [userIdea, setUserIdea] = useState("");
   const [editedScript, setEditedScript] = useState("");
 
-  const [voice, setVoice] = useState("Kore");
-  const [voice1, setVoice1] = useState("Puck");
-  const [voice2, setVoice2] = useState("Kore");
+  const [voice, setVoice] = useState("Ananya");
+  const [voice1, setVoice1] = useState("Devsheel");
+  const [voice2, setVoice2] = useState("Sunidhi");
 
   // Music State
   const [musicPrompt, setMusicPrompt] = useState("");
@@ -242,7 +245,7 @@ export default function StudioPage() {
         amount: data.amount,
         currency: data.currency,
         keyId: data.keyId,
-        name: "VoiceGen AI",
+        name: "GENBOX",
         description: isRenewal ? "Pro Plan Renewal (30 days)" : "Pro Plan Subscription (30 days)",
         email: user?.primaryEmailAddress?.emailAddress ?? "",
         isRenewal,
@@ -269,34 +272,24 @@ export default function StudioPage() {
     }
   };
 
-
-  const handleSaveApiKey = async (keyToSave?: string): Promise<boolean> => {
-    // If the old UI calls this without arguments, it uses customKey from state.
-    // ProSidebar will pass the key directly.
-    const key = keyToSave ?? customKey;
-
-    setSavingKey(true);
-    setCustomKeyError("");
-    setCustomKeySuccess("");
+  const handleSaveApiKey = async (key: string): Promise<boolean> => {
     try {
-      const res = await fetch("/api/user/update-api-key", {
+      const res = await fetch("/api/user/save-key", {
         method: "POST",
+        body: JSON.stringify({ key }),
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: key }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setCustomKeySuccess("API key saved successfully!");
-      if (!keyToSave) {
-        setCustomKey("");
+      if (res.ok) {
+        await fetchProfile();
+        toast.success("API Key saved successfully!", "Key Updated");
+        return true;
+      } else {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to save key");
       }
-      await fetchProfile();
-      return true;
     } catch (err: any) {
-      setCustomKeyError(err.message);
+      toast.error(err.message, "Error");
       return false;
-    } finally {
-      setSavingKey(false);
     }
   };
 
@@ -625,9 +618,10 @@ export default function StudioPage() {
   };
 
   const formatTime = (d: Date) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const isUnlimited = profile?.isAdmin || false;
   const BROADCAST_LIMIT = profile?.proLimits?.broadcast ?? 5;
   const broadcastCount = profile?.dailyBroadcastCount ?? 0;
-  const broadcastReached = broadcastCount >= BROADCAST_LIMIT;
+  const broadcastReached = !isUnlimited && (broadcastCount >= BROADCAST_LIMIT);
 
 
   const [activeMobileColumn, setActiveMobileColumn] = useState<"vault" | "stage" | "command">("stage");
@@ -666,29 +660,29 @@ export default function StudioPage() {
                     {/* Direct TTS */}
                     <div className="flex flex-col items-center border-r border-white/10 pr-3 mr-1">
                       <span className="text-[9px] font-bold text-indigo-300/50 uppercase tracking-widest">Direct</span>
-                      <span className={`text-xs font-mono font-black ${(profile.dailyDirectTtsCount ?? 0) >= (profile.proLimits?.directTts ?? 9) ? 'text-red-400' : 'text-cyan-400'}`}>
-                        {profile.dailyDirectTtsCount ?? 0}/{profile.proLimits?.directTts ?? 9}
+                      <span className={`text-xs font-mono font-black ${!isUnlimited && (profile.dailyDirectTtsCount ?? 0) >= (profile.proLimits?.directTts ?? 9) ? 'text-red-400' : 'text-cyan-400'}`}>
+                        {isUnlimited ? '∞' : `${profile.dailyDirectTtsCount ?? 0}/${profile.proLimits?.directTts ?? 9}`}
                       </span>
                     </div>
                     {/* AI Scripts */}
                     <div className="flex flex-col items-center border-r border-white/10 pr-3 mr-1">
                       <span className="text-[9px] font-bold text-indigo-300/50 uppercase tracking-widest">Scripts</span>
-                      <span className={`text-xs font-mono font-black ${(profile.dailyAiScriptCount ?? 0) >= (profile.proLimits?.aiScript ?? 9) ? 'text-red-400' : 'text-violet-400'}`}>
-                        {profile.dailyAiScriptCount ?? 0}/{profile.proLimits?.aiScript ?? 9}
+                      <span className={`text-xs font-mono font-black ${!isUnlimited && (profile.dailyAiScriptCount ?? 0) >= (profile.proLimits?.aiScript ?? 9) ? 'text-red-400' : 'text-violet-400'}`}>
+                        {isUnlimited ? '∞' : `${profile.dailyAiScriptCount ?? 0}/${profile.proLimits?.aiScript ?? 9}`}
                       </span>
                     </div>
                     {/* Broadcast */}
                     <div className="flex flex-col items-center border-r border-white/10 pr-3 mr-1">
                       <span className="text-[9px] font-bold text-indigo-300/50 uppercase tracking-widest">Broadcast</span>
-                      <span className={`text-xs font-mono font-black ${broadcastCount >= BROADCAST_LIMIT ? 'text-red-400' : 'text-pink-400'}`}>
-                        {Math.min(broadcastCount, BROADCAST_LIMIT)}/{BROADCAST_LIMIT}
+                      <span className={`text-xs font-mono font-black ${!isUnlimited && broadcastCount >= BROADCAST_LIMIT ? 'text-red-400' : 'text-pink-400'}`}>
+                        {isUnlimited ? '∞' : `${Math.min(broadcastCount, BROADCAST_LIMIT)}/${BROADCAST_LIMIT}`}
                       </span>
                     </div>
                     {/* Images */}
                     <div className="flex flex-col items-center">
                       <span className="text-[9px] font-bold text-indigo-300/50 uppercase tracking-widest">Images</span>
-                      <span className={`text-xs font-mono font-black ${(profile.dailyImageCount ?? 0) >= (profile.proLimits?.image ?? 21) ? 'text-red-400' : 'text-emerald-400'}`}>
-                        {profile.dailyImageCount ?? 0}/{profile.proLimits?.image ?? 21}
+                      <span className={`text-xs font-mono font-black ${!isUnlimited && (profile.dailyImageCount ?? 0) >= (profile.proLimits?.image ?? 21) ? 'text-red-400' : 'text-emerald-400'}`}>
+                        {isUnlimited ? '∞' : `${profile.dailyImageCount ?? 0}/${profile.proLimits?.image ?? 21}`}
                       </span>
                     </div>
                   </div>
@@ -714,8 +708,8 @@ export default function StudioPage() {
             <div className="relative">
               <UserButton />
               {profile?.plan === 'pro' && (
-                <div className="absolute -top-1.5 -right-3 px-1.5 py-0.5 bg-emerald-500 text-[8px] font-black text-white rounded-md border border-black z-10 shadow-[0_0_10px_rgba(16,185,129,0.5)] uppercase tracking-tighter leading-none flex items-center justify-center">
-                  PRO
+                <div className={`absolute -top-1.5 -right-3 px-1.5 py-0.5 ${profile.isAdmin ? 'bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]' : 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]'} text-[8px] font-black text-white rounded-md border border-black z-10 uppercase tracking-tighter leading-none flex items-center justify-center`}>
+                  {profile.isAdmin ? 'ADMIN' : 'PRO'}
                 </div>
               )}
             </div>
@@ -962,7 +956,7 @@ export default function StudioPage() {
                     loading={audioLoading}
                     disabled={!directScript.trim()}
                     accentClass="from-indigo-600 to-indigo-500 hover:scale-[1.02]"
-                    isPro={profile?.plan === 'pro'}
+                    isPro={profile?.plan === 'pro' || profile?.isAdmin}
                     language={language}
                   />
                 </div>
@@ -1045,7 +1039,7 @@ export default function StudioPage() {
                             loading={audioLoading}
                             disabled={!editedScript.trim()}
                             accentClass="from-emerald-600 to-emerald-500 shadow-emerald-500/20"
-                            isPro={profile?.plan === 'pro'}
+                            isPro={profile?.plan === 'pro' || profile?.isAdmin}
                             language={language}
                           />
                         </div>
@@ -1101,16 +1095,16 @@ export default function StudioPage() {
                               <div className="flex flex-col items-end gap-1.5 shrink-0">
                                 <button
                                   onClick={() => handleGenerateScript()}
-                                  disabled={loading || !userIdea.trim() || voice1 === voice2 || broadcastReached}
+                                 disabled={loading || !userIdea.trim() || voice1 === voice2 || (!isUnlimited && broadcastReached)}
                                   className={`w-full md:w-auto h-14 px-10 font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-xl shadow-pink-600/20
                                     ${broadcastReached
                                       ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
                                       : 'bg-pink-600 text-white hover:bg-pink-500 active:scale-95 disabled:opacity-30'}`}
                                 >
-                                  {loading ? <Spinner /> : broadcastReached ? `Limit Reached (${BROADCAST_LIMIT}/${BROADCAST_LIMIT})` : 'Design Dialogue'}
+                                  {loading ? <Spinner /> : (isUnlimited ? 'Design Dialogue' : (broadcastReached ? 'Limit Reached' : 'Design Dialogue'))}
                                 </button>
-                                <span className={`text-[10px] font-mono font-bold ${broadcastCount >= BROADCAST_LIMIT ? 'text-red-400' : 'text-slate-600'}`}>
-                                  {Math.min(broadcastCount, BROADCAST_LIMIT)}/{BROADCAST_LIMIT} broadcasts used
+                                <span className={`text-[10px] font-mono font-bold ${!isUnlimited && broadcastCount >= BROADCAST_LIMIT ? 'text-red-400' : 'text-slate-600'}`}>
+                                  {isUnlimited ? 'UNLIMITED PRODUCTION' : `${Math.min(broadcastCount, BROADCAST_LIMIT)}/${BROADCAST_LIMIT} broadcasts used`}
                                 </span>
                               </div>
                            </div>
@@ -1147,13 +1141,13 @@ export default function StudioPage() {
                             </button>
                             <button
                               onClick={handleGenerateAudio}
-                              disabled={audioLoading || !editedScript.trim() || broadcastReached}
+                              disabled={audioLoading || !editedScript.trim() || (!isUnlimited && broadcastReached)}
                               className={`flex-1 h-14 font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-pink-600/20 flex items-center justify-center gap-3
-                                ${broadcastReached 
+                                ${(!isUnlimited && broadcastReached) 
                                   ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50' 
                                   : 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white active:scale-95 disabled:opacity-30'}`}
                             >
-                              {audioLoading ? <Spinner /> : broadcastReached ? `Limit Reached (${BROADCAST_LIMIT}/${BROADCAST_LIMIT})` : 'Produce Broadcast Master'}
+                              {audioLoading ? <Spinner /> : (isUnlimited ? 'Produce Broadcast Master' : (broadcastReached ? `Limit Reached (${BROADCAST_LIMIT}/${BROADCAST_LIMIT})` : 'Produce Broadcast Master'))}
                             </button>
                           </div>
                         </div>
@@ -1229,6 +1223,7 @@ export default function StudioPage() {
             onSaveKey={handleSaveApiKey}
             mobileOpen={activeMobileColumn === 'command' || showSettings}
             onCloseMobile={() => { setActiveMobileColumn('stage'); setShowSettings(false); }}
+            profile={profile}
           />
         </aside>
 

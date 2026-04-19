@@ -956,7 +956,7 @@ export default function StudioPage() {
                     loading={audioLoading}
                     disabled={!directScript.trim()}
                     accentClass="from-indigo-600 to-indigo-500 hover:scale-[1.02]"
-                    isPro={profile?.plan === 'pro' || profile?.isAdmin}
+                    isPro={profile?.plan === 'pro' || Boolean(profile?.isAdmin)}
                     language={language}
                   />
                 </div>
@@ -1039,7 +1039,7 @@ export default function StudioPage() {
                             loading={audioLoading}
                             disabled={!editedScript.trim()}
                             accentClass="from-emerald-600 to-emerald-500 shadow-emerald-500/20"
-                            isPro={profile?.plan === 'pro' || profile?.isAdmin}
+                            isPro={profile?.plan === 'pro' || Boolean(profile?.isAdmin)}
                             language={language}
                           />
                         </div>

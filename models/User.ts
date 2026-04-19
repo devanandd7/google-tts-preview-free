@@ -34,6 +34,7 @@ export interface IUser extends Document {
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
   ownApiKey?: string;          // Pro: user's own Gemini API key (encrypted)
+  ownDriveKey?: string;        // Pro: user's own Google Drive API key (encrypted)
   planActivatedAt?: Date;
   planExpiresAt?: Date;        // 30 days after planActivatedAt
   paymentHistory: IPaymentRecord[];
@@ -78,6 +79,7 @@ const UserSchema = new Schema<IUser>(
     razorpayOrderId:   { type: String },
     razorpayPaymentId: { type: String },
     ownApiKey:         { type: String },
+    ownDriveKey:       { type: String },
     planActivatedAt:   { type: Date },
     planExpiresAt:     { type: Date },
     paymentHistory:    { type: [PaymentRecordSchema], default: [] },

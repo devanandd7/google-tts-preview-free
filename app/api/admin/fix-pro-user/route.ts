@@ -45,7 +45,15 @@ export async function GET(req: NextRequest) {
   let action = "";
 
   if (user) {
-    action = `Already exists by clerkId. Plan = ${user.plan}`;
+    // Force upgrade to Pro regardless of current plan
+    user.plan = "pro";
+    user.planStatus = "active";
+    if (!user.planActivatedAt) user.planActivatedAt = new Date();
+    if (!user.planExpiresAt || new Date(user.planExpiresAt) < new Date()) {
+      user.planExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    }
+    await user.save();
+    action = `Found by clerkId (was: ${user.plan}) → upgraded to Pro`;
   } else if (email) {
     // Try to find by email (old test-mode record)
     user = await User.findOne({ email });

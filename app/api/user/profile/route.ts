@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { decrypt } from "@/lib/encryption";
@@ -13,35 +13,27 @@ export const dynamic = "force-dynamic";
 
 const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
 
-/** Auto-expire plan if time has passed */
-async function checkAndExpirePlan(user: any) {
-  if (user.plan === "pro" && user.planExpiresAt) {
-    const isExpired = new Date(user.planExpiresAt) <= new Date();
-    if (isExpired && user.planStatus !== "expired") {
-      user.plan = "free";
-      user.planStatus = "expired";
-      await user.save();
-    }
-  }
-}
-
 export async function GET() {
   try {
-    const { userId, sessionClaims } = await auth();
+    const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // ── Get the real email directly from Clerk backend (always reliable) ──
+    const client = await clerkClient();
+    const clerkUser = await client.users.getUser(userId);
     const email =
-      (sessionClaims?.email as string) ||
-      (sessionClaims?.primaryEmail as string) ||
-      "";
+      clerkUser.emailAddresses.find(
+        (e) => e.id === clerkUser.primaryEmailAddressId
+      )?.emailAddress ?? "";
+
+    console.log(`[Profile] userId=${userId} email=${email}`);
 
     await connectDB();
     let user = await User.findOne({ clerkId: userId });
 
-    // ── Fallback: if clerkId not found (e.g. after switching test→live keys),
-    //    try to find the existing record by email and migrate the clerkId ──
+    // ── Fallback: search by email (handles test→live Clerk key migration) ──
     if (!user && email) {
       user = await User.findOne({ email });
       if (user) {
@@ -51,7 +43,7 @@ export async function GET() {
       }
     }
 
-    // Still not found — auto-create
+    // ── Still not found — auto-create ──
     if (!user) {
       const isAdmin = ADMIN_EMAILS.includes(email);
       user = await User.create({
@@ -66,7 +58,7 @@ export async function GET() {
       });
     }
 
-    // Reset daily counters if a new day has started (UTC)
+    // ── Reset daily counters if new UTC day ──
     const didReset = resetDailyIfNeeded(user);
     if (didReset) await user.save();
 

@@ -27,16 +27,43 @@ async function checkAndExpirePlan(user: any) {
 
 export async function GET() {
   try {
-    const { userId } = await auth();
+    const { userId, sessionClaims } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const email =
+      (sessionClaims?.email as string) ||
+      (sessionClaims?.primaryEmail as string) ||
+      "";
+
     await connectDB();
     let user = await User.findOne({ clerkId: userId });
 
+    // ── Fallback: if clerkId not found (e.g. after switching test→live keys),
+    //    try to find the existing record by email and migrate the clerkId ──
+    if (!user && email) {
+      user = await User.findOne({ email });
+      if (user) {
+        console.log(`[Profile] Migrating clerkId for ${email}: ${user.clerkId} → ${userId}`);
+        user.clerkId = userId;
+        await user.save();
+      }
+    }
+
+    // Still not found — auto-create
     if (!user) {
-      return NextResponse.json({ error: "User record not found in database. Please try generating something first." }, { status: 404 });
+      const isAdmin = ADMIN_EMAILS.includes(email);
+      user = await User.create({
+        clerkId: userId,
+        email,
+        plan: isAdmin ? "pro" : "free",
+        planStatus: isAdmin ? "active" : "none",
+        planActivatedAt: isAdmin ? new Date() : undefined,
+        planExpiresAt: isAdmin
+          ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+          : undefined,
+      });
     }
 
     // Reset daily counters if a new day has started (UTC)

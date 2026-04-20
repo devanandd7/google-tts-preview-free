@@ -44,12 +44,14 @@ const INITIAL_VOICE_SAMPLES = [
 ];
 
 export default function LandingPage() {
+  const [isMounted, setIsMounted] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [voiceSamples, setVoiceSamples] = useState(INITIAL_VOICE_SAMPLES);
   const [videoSamples, setVideoSamples] = useState<any[]>([]);
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement | null }>({});
 
   useEffect(() => {
+    setIsMounted(true);
     async function fetchSamples() {
       if (!supabase) return;
       try {
@@ -285,7 +287,7 @@ export default function LandingPage() {
                       <div 
                         key={i} 
                         className={`w-0.5 md:w-1 rounded-full bg-indigo-500/40 transition-all duration-300 ${playingId === sample.id ? 'animate-bounce' : ''}`}
-                        style={{ height: `${30 + Math.random() * 70}%`, animationDelay: `${i * 0.05}s` }}
+                        style={{ height: `${isMounted ? 30 + Math.random() * 70 : 50}%`, animationDelay: `${i * 0.05}s` }}
                       />
                     ))}
                   </div>
@@ -700,12 +702,18 @@ export default function LandingPage() {
       </section>
 
       {/* FOOTER */}
-      <footer className="py-20 px-6 border-t border-white/5">
+      <footer className="py-20 px-6 border-t border-white/5 relative z-10 bg-slate-950/50">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-10">
           <div className="flex items-center gap-3">
             <Mic2 className="w-6 h-6 text-indigo-500" />
             <span className="font-black text-white text-xl tracking-tighter uppercase italic">GenBox</span>
           </div>
+          
+          <div className="flex items-center gap-8">
+            <Link href="/privacy" className="text-[10px] font-black text-slate-500 hover:text-indigo-400 uppercase tracking-widest transition-colors">Privacy Policy</Link>
+            <Link href="/terms" className="text-[10px] font-black text-slate-500 hover:text-indigo-400 uppercase tracking-widest transition-colors">Terms of Service</Link>
+          </div>
+
           <p className="text-slate-600 text-[10px] font-black uppercase tracking-widest">© 2026 VoiceGen AI Laboratory</p>
         </div>
       </footer>

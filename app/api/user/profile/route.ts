@@ -71,11 +71,19 @@ export async function GET() {
       if (needsSave) await user.save();
     }
 
+    const now = new Date();
+
+    // ── Handle Expiration ──
+    if (user.plan === "pro" && !isAdmin && user.planExpiresAt && new Date(user.planExpiresAt) <= now) {
+      user.plan = "free";
+      user.planStatus = "expired";
+      await user.save();
+    }
+
     // ── Reset daily counters if new UTC day ──
     const didReset = resetDailyIfNeeded(user);
     if (didReset) await user.save();
 
-    const now = new Date();
     const expiresAt = user.planExpiresAt ? new Date(user.planExpiresAt) : null;
     const daysLeft = expiresAt
       ? Math.max(0, Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))

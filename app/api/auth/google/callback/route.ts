@@ -43,8 +43,8 @@ export async function GET(req: NextRequest) {
     // Redirect back to settings/sidebar (using a relative URL or environment variable)
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     return NextResponse.redirect(`${baseUrl}/studio?drive_success=true`);
-  } catch (error) {
-    console.error("[Google OAuth Callback Error]", error);
+  } catch (error: any) {
+    console.error("[Google OAuth Callback Error]", error.response?.data || error.message);
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     return NextResponse.redirect(`${baseUrl}/studio?drive_error=true`);
   }

@@ -9,6 +9,12 @@ export async function GET() {
   }
 
   const oauth2Client = getOAuth2Client();
+  
+  // DEBUG LOGS (Remove after fix)
+  console.log("--- Google Drive OAuth Start ---");
+  console.log("Client ID:", process.env.GOOGLE_CLIENT_ID?.substring(0, 15) + "...");
+  console.log("Redirect URI:", process.env.GOOGLE_REDIRECT_URI);
+  console.log("--------------------------------");
 
   // Scopes for full drive access (to find/create folders)
   const scopes = [

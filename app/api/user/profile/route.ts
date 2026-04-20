@@ -73,6 +73,37 @@ export async function GET() {
 
     const now = new Date();
 
+    // ── Auto-Healer: Restore Pro if valid payment history exists but status is 'free' ──
+    if (user.plan === "free" && !isAdmin && user.paymentHistory && user.paymentHistory.length > 0) {
+      const validPayment = user.paymentHistory.find(p => new Date(p.planExpiresAt) > now);
+      if (validPayment) {
+        console.log(`[AutoHealer] Valid payment found for ${email}. Restoring Pro status.`);
+        user.plan = "pro";
+        user.planStatus = "active";
+        user.planActivatedAt = validPayment.planActivatedAt;
+        user.planExpiresAt = validPayment.planExpiresAt;
+        await user.save();
+      }
+    }
+
+    // ── Cross-Account Sync: If any other account with same email is Pro, upgrade this one ──
+    if (user.plan === "free" && !isAdmin && email) {
+      const otherPro = await User.findOne({
+        email,
+        clerkId: { $ne: userId },
+        plan: "pro",
+        planExpiresAt: { $gt: now }
+      });
+      if (otherPro) {
+        console.log(`[AutoHealer] Syncing Pro status from duplicate account for ${email}.`);
+        user.plan = "pro";
+        user.planStatus = "active";
+        user.planActivatedAt = otherPro.planActivatedAt;
+        user.planExpiresAt = otherPro.planExpiresAt;
+        await user.save();
+      }
+    }
+
     // ── Handle Expiration ──
     if (user.plan === "pro" && !isAdmin && user.planExpiresAt && new Date(user.planExpiresAt) <= now) {
       user.plan = "free";

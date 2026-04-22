@@ -401,94 +401,9 @@ export function ProSidebar({
                                             </button>
                                         ))}
                                     </div>
-
-                                    <div className="space-y-4 bg-white/[0.03] p-5 rounded-2xl border border-white/[0.08]">
-                                        <div className="space-y-1">
-                                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                                Smart Backup Setup
-                                            </p>
-                                            <p className="text-[9px] text-slate-400 leading-relaxed font-bold uppercase tracking-tight">
-                                                To bypass Google's storage limits, follow these 2 simple steps:
-                                            </p>
-                                        </div>
-
-                                        <div className="space-y-3">
-                                            <div className="flex gap-3">
-                                                <div className="w-5 h-5 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-[10px] font-black text-indigo-400 shrink-0">1</div>
-                                                <p className="text-[9px] text-slate-300 font-bold uppercase tracking-tight">
-                                                    Create a folder named <span className="text-white bg-white/5 px-1.5 py-0.5 rounded">GenBox Backups</span> in your Drive.
-                                                </p>
-                                            </div>
-                                            <div className="flex gap-3">
-                                                <div className="w-5 h-5 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-[10px] font-black text-indigo-400 shrink-0">2</div>
-                                                <p className="text-[9px] text-slate-300 font-bold uppercase tracking-tight leading-relaxed">
-                                                    Share it with the email from your JSON as <span className="text-white bg-indigo-500/20 px-1.5 py-0.5 rounded border border-indigo-500/30">Editor</span>.
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        <div className="pt-2 border-t border-white/5">
-                                            <p className="text-[8px] text-indigo-400/60 font-black uppercase tracking-widest mb-2">Advanced: Manual Folder ID</p>
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="text"
-                                                    value={driveFolderId}
-                                                    onChange={(e) => setDriveFolderId(e.target.value)}
-                                                    placeholder="Detecting automatically..."
-                                                    className="flex-1 bg-black/40 border border-white/10 focus:border-indigo-500/50 rounded-xl px-3 py-2.5 text-[11px] text-white outline-none transition-all font-mono"
-                                                />
-                                                <button 
-                                                    onClick={handleFolderSave}
-                                                    className="px-4 bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all"
-                                                >
-                                                    Save
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
                                 </div>
                             )}
 
-                            <p className="text-[10px] text-slate-400 leading-relaxed font-bold uppercase tracking-tight">Upload <span className="text-white">Service Account JSON</span> to activate.</p>
-                            
-                            <label className="block w-full border-2 border-dashed border-white/10 hover:border-indigo-500/50 rounded-2xl p-6 text-center cursor-pointer transition-all bg-white/[0.01] hover:bg-indigo-500/[0.02] group">
-                                <input 
-                                    type="file" 
-                                    accept=".json" 
-                                    className="hidden" 
-                                    onChange={async (e) => {
-                                        const file = e.target.files?.[0];
-                                        if (!file) return;
-                                        
-                                        const reader = new FileReader();
-                                        reader.onload = async (event) => {
-                                            const content = event.target?.result as string;
-                                            setSavingKey(true);
-                                            try {
-                                                const res = await fetch("/api/user/save-drive-config", {
-                                                    method: "POST",
-                                                    headers: { "Content-Type": "application/json" },
-                                                    body: JSON.stringify({ jsonKey: content }),
-                                                });
-                                                const data = await res.json();
-                                                if (!res.ok) throw new Error(data.error || "Failed to save Drive config");
-                                                toast.success("Google Drive backup enabled!", "Forge Connected");
-                                            } catch (err: any) {
-                                                toast.error(err.message, "Drive Setup Failed");
-                                            } finally {
-                                                setSavingKey(false);
-                                            }
-                                        };
-                                        reader.readAsText(file);
-                                    }}
-                                />
-                                <svg className="w-8 h-8 text-slate-500 group-hover:text-indigo-400 mx-auto mb-2 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
-                                <span className="text-[9px] font-black text-slate-400 group-hover:text-white uppercase tracking-widest transition-colors">
-                                    {savingKey ? "Processing..." : "Drop JSON File Here"}
-                                </span>
-                            </label>
-                            
                             {(profile?.hasOwnDriveKey || profile?.hasDriveOAuth) && (
                                 <p className="text-[9px] text-emerald-400/60 font-bold uppercase tracking-widest text-center flex items-center justify-center gap-1">
                                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zm-1.5-6l-3-3 1.06-1.06 1.94 1.94 4.44-4.44 1.06 1.06-5.5 5.5z" /></svg>

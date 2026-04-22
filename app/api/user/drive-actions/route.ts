@@ -34,6 +34,10 @@ export async function POST(req: Request) {
       const authObj = await getGoogleAuth(jsonKey, user.driveRefreshToken);
       const folderId = await createBackupFolder(authObj);
       
+      if (!folderId) {
+        throw new Error("Failed to create folder on Google Drive");
+      }
+
       user.driveFolderId = folderId;
       await user.save();
       

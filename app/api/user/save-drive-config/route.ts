@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
-import { encrypt } from "@/lib/encryption";
 
 export async function POST(req: Request) {
   try {
@@ -11,24 +10,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { jsonKey, driveEnabled, driveToggles, driveFolderId } = await req.json();
+    const { driveEnabled, driveToggles, driveFolderId } = await req.json();
     
-    let encryptedKey = undefined;
-    if (jsonKey) {
-      try {
-        const parsed = JSON.parse(jsonKey);
-        if (parsed.type !== "service_account") {
-          return NextResponse.json({ error: "Invalid JSON format. Must be a service_account key." }, { status: 400 });
-        }
-        encryptedKey = encrypt(jsonKey);
-      } catch (e) {
-        return NextResponse.json({ error: "Invalid JSON format." }, { status: 400 });
-      }
-    }
-
     await connectDB();
     const updateData: any = {};
-    if (encryptedKey) updateData.ownDriveKey = encryptedKey;
     if (typeof driveEnabled === 'boolean') updateData.driveEnabled = driveEnabled;
     if (driveToggles) updateData.driveToggles = driveToggles;
     if (driveFolderId !== undefined) updateData.driveFolderId = driveFolderId;

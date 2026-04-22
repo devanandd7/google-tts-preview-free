@@ -8,6 +8,7 @@ import { decrypt } from "@/lib/encryption";
 import { PRO_DAILY_BROADCAST_LIMIT, TTS_AI_MODEL } from "@/lib/constants";
 import { VOICE_MAPPING } from "@/lib/voices";
 import { uploadToDrive } from "@/lib/google-drive";
+import { getTimeContext } from "@/lib/time-context";
 
 // ─── WAV Header Builder ───────────────────────────────────────────────────────
 function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 16): Buffer {
@@ -109,7 +110,13 @@ export async function POST(req: Request) {
       await user.save();
     }
 
-    const { script, voice1, voice2 } = await req.json();
+    const { 
+      script, 
+      voice1, 
+      voice2,
+      useTimeContext = false,
+      timezoneOffset = 330 // Default IST
+    } = await req.json();
 
     if (!script?.trim() || !voice1 || !voice2) {
       return NextResponse.json({ error: "Missing required parameters" }, { status: 400 });
@@ -141,10 +148,23 @@ export async function POST(req: Request) {
     const callGeminiTTS = async (key: string, fullScript: string) => {
       const ai = new GoogleGenAI({ apiKey: key });
 
-      const systemInstruction = `You are directing a high-energy professional FM radio broadcast. 
+      let systemInstruction = `You are directing a high-energy professional FM radio broadcast. 
 Two RJ hosts are live on air — maintain consistent vocal energy, natural pacing, and distinct character voices throughout.
 
 All inline tags like [enthusiasm] or [laughs] are official Gemini TTS audio direction tags — they control vocal delivery automatically. Never speak them aloud.`;
+
+      if (useTimeContext) {
+        const timeCtx = getTimeContext(timezoneOffset);
+        systemInstruction = `You are directing a professional FM radio broadcast.
+Current time period: ${timeCtx.period.toUpperCase()}
+
+${timeCtx.systemTone}
+
+Maintain this tone consistently across the entire broadcast.
+All inline tags like [enthusiasm] or [laughs] are official Gemini TTS 
+audio direction tags — they control vocal delivery automatically. 
+Never speak them aloud.`;
+      }
 
       return await withGeminiRetry(() =>
         (ai as any).models.generateContent({

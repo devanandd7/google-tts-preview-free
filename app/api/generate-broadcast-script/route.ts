@@ -13,6 +13,7 @@ import {
   incrementUsage,
 } from "@/lib/usage";
 import { VOICE_MAPPING, VOICE_GENDERS } from "@/lib/voices";
+import { getTimeContext } from "@/lib/time-context";
 
 const ADMIN_EMAILS = ["devanandutkarsh7@gmail.com"];
 
@@ -84,7 +85,15 @@ export async function POST(req: Request) {
       }
     }
 
-    const { prompt, language = "hindi", voice1 = "Dev", voice2 = "Sunidhi", durationMinutes = 1 } = await req.json();
+    const { 
+      prompt, 
+      language = "hindi", 
+      voice1 = "Dev", 
+      voice2 = "Sunidhi", 
+      durationMinutes = 1,
+      useTimeContext = false,
+      timezoneOffset = 330 // Default IST
+    } = await req.json();
 
     if (!prompt?.trim()) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
@@ -100,6 +109,24 @@ export async function POST(req: Request) {
 
     const gender1 = VOICE_GENDERS[voice1] ?? "male";
     const gender2 = VOICE_GENDERS[voice2] ?? "female";
+
+    // ── Time Context Injection ───────────────────────────────────────────────
+    let timeInfo = "";
+    if (useTimeContext) {
+      const timeCtx = getTimeContext(timezoneOffset);
+      timeInfo = `
+## TIME-BASED TONE (CRITICAL — match this exactly):
+Current Period: ${timeCtx.period.toUpperCase()} (${timeCtx.greeting})
+Local Time: ${timeCtx.timeString}
+Energy Level: ${timeCtx.energy}
+Pace: ${timeCtx.pace}
+Mood: ${timeCtx.mood}
+Preferred Tags: ${timeCtx.tags}
+
+OPENING: The opening line MUST reflect the time of day. Use "${timeCtx.greeting} listeners!" or similar.
+TIME MENTION: At some point in the opening or transition, NATURALLY mention that "it's currently ${timeCtx.timeString}" or "the clock shows ${timeCtx.timeString}".
+TONE DIRECTION: ${timeCtx.systemTone}`;
+    }
 
     const langInstruction = isHindi
       ? `LANGUAGE: Write ALL spoken dialogue in natural, conversational Hindi (Devanagari script). Mix in English words naturally (Hinglish). 
@@ -191,6 +218,8 @@ Speaker 1: ${voice1} (${gender1}) — energetic, humorous, drives the show
 Speaker 2: ${voice2} (${gender2}) — warm, witty, great at reactions and depth
 Target: ${minWords}–${maxWords} words for a ${durationMinutes}-minute broadcast
 Topic: ${prompt}
+${timeInfo}
+
 ${langInstruction}
 
 Write the broadcast directly — open with HIGH ENERGY:`

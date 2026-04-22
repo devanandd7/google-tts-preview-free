@@ -175,6 +175,10 @@ export default function StudioPage() {
   const [imageGenerating, setImageGenerating] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; prompt: string } | null>(null);
 
+  // Time-Based Context State
+  const [useTimeContext, setUseTimeContext] = useState(false);
+  const [timezoneOffset, setTimezoneOffset] = useState(330); // Default IST
+
   const [loading, setLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
   const [error, setError] = useState("");
@@ -399,7 +403,7 @@ export default function StudioPage() {
 
     const endpoint = mode === "broadcast" ? "/api/generate-broadcast-script" : "/api/generate-script";
     const payload = mode === "broadcast"
-      ? { prompt: text, language, voice1, voice2, durationMinutes: scriptDuration }
+      ? { prompt: text, language, voice1, voice2, durationMinutes: scriptDuration, useTimeContext, timezoneOffset }
       : { prompt: text, language, voice, durationMinutes: scriptDuration };
 
     try {
@@ -460,7 +464,7 @@ export default function StudioPage() {
 
     const endpoint = mode === "broadcast" ? "/api/generate-broadcast-audio" : "/api/generate";
     const payload = mode === "broadcast"
-      ? { script, voice1, voice2 }
+      ? { script, voice1, voice2, useTimeContext, timezoneOffset }
       : { script, voice };
 
     try {
@@ -1208,6 +1212,36 @@ export default function StudioPage() {
                    <div className="glass-panel rounded-3xl p-6 md:p-8 border-white/[0.05]">
                       {stage === 'input' ? (
                         <div className="space-y-8">
+                           {/* TIME-BASED ENERGY MANAGEMENT */}
+                           <div className="glass-panel-sub rounded-2xl p-6 border-white/[0.05] bg-white/[0.01]">
+                              <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                                 <div className="flex items-center gap-4 group cursor-pointer" onClick={() => setUseTimeContext(!useTimeContext)}>
+                                    <div className={`w-12 h-6 rounded-full relative transition-all duration-300 ${useTimeContext ? 'bg-pink-600' : 'bg-slate-700'}`}>
+                                       <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${useTimeContext ? 'right-1' : 'left-1'}`} />
+                                    </div>
+                                    <div className="flex flex-col">
+                                       <span className="text-[10px] font-black text-white uppercase tracking-widest">Time-Aware Energy</span>
+                                       <span className="text-[9px] text-slate-500 font-bold uppercase tracking-tighter">Adjust mood & tone by time of day</span>
+                                    </div>
+                                 </div>
+
+                                 <div className={`flex items-center gap-4 transition-all duration-500 ${useTimeContext ? 'opacity-100' : 'opacity-30 pointer-events-none grayscale'}`}>
+                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Select Timezone</span>
+                                    <select 
+                                       value={timezoneOffset}
+                                       onChange={(e) => setTimezoneOffset(Number(e.target.value))}
+                                       className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-bold text-pink-400 outline-none focus:border-pink-500/50 transition-all uppercase tracking-widest"
+                                    >
+                                       <option value={330}>IST (UTC +5:30)</option>
+                                       <option value={0}>GMT (UTC +0)</option>
+                                       <option value={-300}>EST (UTC -5:00)</option>
+                                       <option value={-480}>PST (UTC -8:00)</option>
+                                       <option value={540}>JST (UTC +9:00)</option>
+                                    </select>
+                                 </div>
+                              </div>
+                           </div>
+
                            <div className="flex flex-col">
                               <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Broadcast Concept</span>
                               <textarea

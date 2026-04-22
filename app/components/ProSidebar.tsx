@@ -122,6 +122,48 @@ export function ProSidebar({
         handleUpdateDriveSettings(driveEnabled, driveToggles, driveFolderId);
     };
 
+    const [creatingFolder, setCreatingFolder] = useState(false);
+
+    const handleDisconnectDrive = async () => {
+        if (!confirm("Are you sure you want to disconnect Google Drive? This will stop auto-backups.")) return;
+        setUpdatingDrive(true);
+        try {
+            const res = await fetch("/api/user/drive-actions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "disconnect" }),
+            });
+            if (!res.ok) throw new Error("Failed to disconnect");
+            toast.success("Google Drive disconnected", "Success");
+            // Reload page to reset all states simply
+            window.location.reload();
+        } catch (err: any) {
+            toast.error(err.message, "Error");
+        } finally {
+            setUpdatingDrive(false);
+        }
+    };
+
+    const handleCreateFolder = async () => {
+        setCreatingFolder(true);
+        try {
+            const res = await fetch("/api/user/drive-actions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "create-folder" }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Failed to create folder");
+            
+            setDriveFolderId(data.folderId);
+            toast.success("GenBox Backups folder created!", "Success");
+        } catch (err: any) {
+            toast.error(err.message, "Error");
+        } finally {
+            setCreatingFolder(false);
+        }
+    };
+
     const sidebarContent = (
         <div className="flex flex-col h-full w-full bg-slate-950 border-r border-white/5">
             <div className="flex-1 overflow-y-auto scrollbar-hide p-5 space-y-8 min-h-0">
@@ -259,7 +301,18 @@ export function ProSidebar({
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
                         <h3 className="text-[11px] font-black text-indigo-400 uppercase tracking-[0.2em]">Google Drive Forge</h3>
-                        {getStatusBadge((profile?.hasOwnDriveKey || profile?.hasDriveOAuth) ? "active" : "none")}
+                        <div className="flex gap-2">
+                            {getStatusBadge((profile?.hasOwnDriveKey || profile?.hasDriveOAuth) ? "active" : "none")}
+                            {(profile?.hasOwnDriveKey || profile?.hasDriveOAuth) && (
+                                <button 
+                                    onClick={handleDisconnectDrive}
+                                    className="p-1 hover:bg-rose-500/10 text-slate-500 hover:text-rose-400 rounded transition-colors"
+                                    title="Disconnect Drive"
+                                >
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                                </button>
+                            )}
+                        </div>
                     </div>
                     {isPro || profile?.isAdmin ? (
                         <div className="space-y-6">
@@ -295,6 +348,27 @@ export function ProSidebar({
                             </div>
 
                             <div className="h-px bg-white/5 w-full" />
+
+                            {/* FOLDER CREATION SECTION */}
+                            {(profile?.hasOwnDriveKey || profile?.hasDriveOAuth) && !driveFolderId && (
+                                <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl space-y-3">
+                                    <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest flex items-center gap-2">
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                        Backup Folder Missing
+                                    </p>
+                                    <p className="text-[9px] text-slate-400 leading-relaxed font-bold uppercase tracking-tight">
+                                        A dedicated backup folder is required to sync your generations.
+                                    </p>
+                                    <button 
+                                        onClick={handleCreateFolder}
+                                        disabled={creatingFolder}
+                                        className="w-full py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-amber-800 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition-all"
+                                    >
+                                        {creatingFolder ? "Creating..." : "Create GenBox Backups Folder"}
+                                    </button>
+                                </div>
+                            )}
+
                             <div className="flex items-center justify-between bg-white/[0.02] p-4 rounded-2xl border border-white/[0.05]">
                                 <div>
                                     <p className="text-[10px] font-black text-white uppercase tracking-widest">Global Sync</p>

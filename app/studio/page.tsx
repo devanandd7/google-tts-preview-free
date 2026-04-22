@@ -302,6 +302,8 @@ export default function StudioPage() {
   const [driveLoading, setDriveLoading] = useState(false);
   const [driveStatus, setDriveStatus] = useState<"idle" | "processing" | "success" | "failed">("idle");
 
+  const [driveFolderExists, setDriveFolderExists] = useState(true);
+
   const fetchDriveFiles = async () => {
     setDriveLoading(true);
     try {
@@ -309,11 +311,32 @@ export default function StudioPage() {
       const data = await res.json();
       if (res.ok) {
         setDriveFiles(data.files || []);
+        setDriveFolderExists(data.folderExists);
       } else {
         console.error("Drive Fetch Error:", data.error);
       }
     } catch (err) {
       console.error("Drive Network Error:", err);
+    } finally {
+      setDriveLoading(false);
+    }
+  };
+
+  const handleCreateFolderFromVault = async () => {
+    setDriveLoading(true);
+    try {
+      const res = await fetch("/api/user/drive-actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create-folder" }),
+      });
+      if (res.ok) {
+        toast.success("GenBox Backups folder created!", "Success");
+        fetchDriveFiles();
+        fetchProfile();
+      }
+    } catch (err) {
+      toast.error("Failed to create folder", "Error");
     } finally {
       setDriveLoading(false);
     }
@@ -925,7 +948,22 @@ export default function StudioPage() {
                   </div>
                 )}
                 
-                {!driveLoading && driveFiles.length === 0 && (
+                {!driveLoading && !driveFolderExists && (
+                  <div className="text-center py-12 px-6 bg-amber-500/5 border border-amber-500/10 rounded-2xl space-y-4">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center mx-auto">
+                      <svg className="w-5 h-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                    </div>
+                    <p className="text-amber-200/70 text-[10px] font-black uppercase tracking-widest leading-relaxed">Backup folder not found on your Google Drive.</p>
+                    <button 
+                      onClick={handleCreateFolderFromVault}
+                      className="w-full py-3 bg-amber-600 hover:bg-amber-500 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-amber-900/20"
+                    >
+                      Initialize GenBox Folder
+                    </button>
+                  </div>
+                )}
+
+                {!driveLoading && driveFolderExists && driveFiles.length === 0 && (
                   <div className="text-center py-20 px-6 space-y-4">
                     <div className="w-12 h-12 rounded-2xl bg-white/[0.02] border border-white/[0.05] flex items-center justify-center mx-auto opacity-40">
                       <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" /></svg>

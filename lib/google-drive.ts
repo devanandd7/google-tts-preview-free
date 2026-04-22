@@ -87,8 +87,21 @@ export async function uploadToDrive(
   }
 }
 
+export async function createBackupFolder(auth: any) {
+  const drive = google.drive({ version: "v3", auth });
+  const fileMetadata = {
+    name: "GenBox Backups",
+    mimeType: "application/vnd.google-apps.folder",
+  };
+  const folder = await drive.files.create({
+    requestBody: fileMetadata,
+    fields: "id",
+  });
+  return folder.data.id;
+}
+
 /**
- * Lists files from Google Drive (those accessible to the Service Account).
+ * Lists files from Google Drive (those accessible to the Service Account/OAuth).
  */
 export async function listDriveFiles(
   jsonKey: string | undefined, 
@@ -105,8 +118,13 @@ export async function listDriveFiles(
       targetFolderId = await findBackupFolder(auth);
     }
 
-    const qParts = ["trashed = false"];
+    // Safety: ONLY fetch files that start with "GenBox" OR are inside the GenBox folder
+    // This prevents showing the user's private unrelated files.
+    const qParts = ["trashed = false", "name contains 'GenBox'"];
+    
     if (targetFolderId) {
+      // If we have a folder, we can be more specific or just include everything in it
+      // but since the user wants "GenBox related", we keep the name filter too.
       qParts.push(`'${targetFolderId}' in parents`);
     }
 
@@ -119,6 +137,7 @@ export async function listDriveFiles(
 
     return {
         files: response.data.files || [],
+        folderExists: !!targetFolderId,
         detectedFolderId: !folderId ? targetFolderId : null
     };
   } catch (error) {

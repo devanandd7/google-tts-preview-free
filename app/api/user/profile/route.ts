@@ -11,7 +11,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
+const ADMIN_EMAILS = ["devanandutkarsh7@gmail.com"];
 
 export async function GET() {
   try {

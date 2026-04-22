@@ -27,7 +27,10 @@ export async function GET() {
       await user.save();
     }
 
-    return NextResponse.json({ files: driveResult.files });
+    return NextResponse.json({ 
+      files: driveResult.files, 
+      folderExists: driveResult.folderExists 
+    });
   } catch (error: any) {
     console.error("[List Drive Files Error]", error);
     // If it's an auth error, maybe the key is invalid

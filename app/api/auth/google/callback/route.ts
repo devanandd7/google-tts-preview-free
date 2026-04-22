@@ -40,12 +40,14 @@ export async function GET(req: NextRequest) {
       }
     );
 
-    // Redirect back to settings/sidebar (using a relative URL or environment variable)
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    return NextResponse.redirect(`${baseUrl}/studio?drive_success=true`);
+    // Redirect back to settings/sidebar using the request's origin to avoid hardcoded localhost
+    const redirectUrl = new URL("/studio", req.url);
+    redirectUrl.searchParams.set("drive_success", "true");
+    return NextResponse.redirect(redirectUrl);
   } catch (error: any) {
     console.error("[Google OAuth Callback Error]", error.response?.data || error.message);
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    return NextResponse.redirect(`${baseUrl}/studio?drive_error=true`);
+    const redirectUrl = new URL("/studio", req.url);
+    redirectUrl.searchParams.set("drive_error", "true");
+    return NextResponse.redirect(redirectUrl);
   }
 }

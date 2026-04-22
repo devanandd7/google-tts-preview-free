@@ -274,9 +274,9 @@ export default function StudioPage() {
 
   const handleSaveApiKey = async (key: string): Promise<boolean> => {
     try {
-      const res = await fetch("/api/user/save-key", {
+      const res = await fetch("/api/user/update-api-key", {
         method: "POST",
-        body: JSON.stringify({ key }),
+        body: JSON.stringify({ apiKey: key }),
         headers: { "Content-Type": "application/json" },
       });
       if (res.ok) {

@@ -192,14 +192,18 @@ export async function POST(req: Request) {
         ttsResponse = await attemptMultiSpeakerTTS(activeKey, chunk);
       } catch (err: any) {
         const msg = err?.message?.toLowerCase() || "";
-        if (
-          activeKey === userApiKey &&
-          (msg.includes("denied access") ||
-            msg.includes("permission_denied") ||
-            msg.includes("api_key_invalid") ||
-            msg.includes("quota") ||
-            msg.includes("exceeded"))
-        ) {
+        const isKeyError = 
+          err.code === "QUOTA_EXCEEDED" || 
+          err.code === "INVALID_KEY" || 
+          err.code === "OVERLOADED" ||
+          msg.includes("denied access") ||
+          msg.includes("permission_denied") ||
+          msg.includes("api_key_invalid") ||
+          msg.includes("quota") ||
+          msg.includes("exceeded") ||
+          msg.includes("invalid");
+
+        if (activeKey === userApiKey && isKeyError && user.plan !== "pro") {
           console.warn(`[Broadcast Audio] Chunk ${i+1}: User key failed, falling back to server key.`);
           activeKey = serverApiKey;
           ttsResponse = await attemptMultiSpeakerTTS(activeKey, chunk);

@@ -164,14 +164,18 @@ User's idea: ${prompt}`,
       response = await attemptPromptEnhance(userApiKey || serverApiKey);
     } catch (err: any) {
       const msg = err?.message?.toLowerCase() || "";
-      if (
-        userApiKey &&
-        (msg.includes("denied access") ||
-          msg.includes("permission_denied") ||
-          msg.includes("api_key_invalid") ||
-          msg.includes("quota") ||
-          msg.includes("exceeded"))
-      ) {
+      const isKeyError = 
+        err.code === "QUOTA_EXCEEDED" || 
+        err.code === "INVALID_KEY" || 
+        err.code === "OVERLOADED" ||
+        msg.includes("denied access") ||
+        msg.includes("permission_denied") ||
+        msg.includes("api_key_invalid") ||
+        msg.includes("quota") ||
+        msg.includes("exceeded") ||
+        msg.includes("invalid");
+
+      if (userApiKey && isKeyError && user.plan !== "pro") {
         console.warn("[Generate Image Fallback] User custom key failed. Falling back to server key.");
         response = await attemptPromptEnhance(serverApiKey);
       } else {

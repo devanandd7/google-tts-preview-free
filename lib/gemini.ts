@@ -70,22 +70,22 @@ export function classifyGeminiError(err: any, exhausted = false): Error {
   const msg: string = err?.message || err?.toString() || "Unknown error";
 
   // Check for hard quota limit first
-  if (msg.toLowerCase().includes("exceeded your current quota") || msg.toLowerCase().includes("quota exceeded for metric")) {
-    const e = new Error("Gemini API quota exceeded. Free tier limit for this model is full. Please check your AI Studio billing or upgrade your API tier.");
+  if (msg.toLowerCase().includes("exceeded your current quota") || msg.toLowerCase().includes("quota exceeded for metric") || msg.toLowerCase().includes("429")) {
+    const e = new Error("Gemini API quota exceeded or rate limit hit. Your current key is temporarily exhausted.");
     (e as any).code = "QUOTA_EXCEEDED";
     return e;
   }
 
   if (exhausted || isOverloadError(err)) {
     const e = new Error(
-      "Gemini is currently experiencing high demand. We retried automatically but the service is still overloaded. Please wait 30–60 seconds and try again."
+      "Gemini is currently experiencing high demand (Overloaded). We retried automatically but the service is still busy. Please wait 30–60 seconds."
     );
     (e as any).code = "OVERLOADED";
     (e as any).retryAfter = 30;
     return e;
   }
 
-  if (msg.toLowerCase().includes("api_key") || msg.toLowerCase().includes("api key")) {
+  if (msg.toLowerCase().includes("api_key") || msg.toLowerCase().includes("api key") || msg.toLowerCase().includes("invalid")) {
     const e = new Error("Invalid or missing Gemini API key. Please check your key in Pro Settings.");
     (e as any).code = "INVALID_KEY";
     return e;

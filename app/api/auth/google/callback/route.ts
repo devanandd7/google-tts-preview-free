@@ -17,10 +17,10 @@ export async function GET(req: NextRequest) {
     await connectDB();
     const oauth2Client = getOAuth2Client();
     const { tokens } = await oauth2Client.getToken(code);
-    
+
     if (!tokens.refresh_token) {
-        // If no refresh token, we might need to ask the user to re-consent
-        // But usually 'prompt: consent' handles this
+      // If no refresh token, we might need to ask the user to re-consent
+      // But usually 'prompt: consent' handles this
     }
 
     oauth2Client.setCredentials(tokens);
@@ -33,21 +33,19 @@ export async function GET(req: NextRequest) {
     // Save to user profile
     await User.findOneAndUpdate(
       { clerkId: userId },
-      { 
+      {
         driveRefreshToken: tokens.refresh_token,
         driveEmail: email,
         driveEnabled: true
       }
     );
 
-    // Redirect back to settings/sidebar using the request's origin to avoid hardcoded localhost
-    const redirectUrl = new URL("/studio", req.url);
-    redirectUrl.searchParams.set("drive_success", "true");
-    return NextResponse.redirect(redirectUrl);
+    // Redirect back to settings/sidebar (using a relative URL or environment variable)
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    return NextResponse.redirect(`${baseUrl}/studio?drive_success=true`);
   } catch (error: any) {
     console.error("[Google OAuth Callback Error]", error.response?.data || error.message);
-    const redirectUrl = new URL("/studio", req.url);
-    redirectUrl.searchParams.set("drive_error", "true");
-    return NextResponse.redirect(redirectUrl);
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    return NextResponse.redirect(`${baseUrl}/studio?drive_error=true`);
   }
 }

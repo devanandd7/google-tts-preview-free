@@ -258,7 +258,7 @@ export function ProSidebar({
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
                         <h3 className="text-[11px] font-black text-indigo-400 uppercase tracking-[0.2em]">Google Drive Forge</h3>
-                        {getStatusBadge(profile?.hasOwnDriveKey ? "active" : "none")}
+                        {getStatusBadge((profile?.hasOwnDriveKey || profile?.hasDriveOAuth) ? "active" : "none")}
                     </div>
                     {isPro || profile?.isAdmin ? (
                         <div className="space-y-6">
@@ -414,7 +414,7 @@ export function ProSidebar({
                                 </span>
                             </label>
                             
-                            {profile?.hasOwnDriveKey && (
+                            {(profile?.hasOwnDriveKey || profile?.hasDriveOAuth) && (
                                 <p className="text-[9px] text-emerald-400/60 font-bold uppercase tracking-widest text-center flex items-center justify-center gap-1">
                                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zm-1.5-6l-3-3 1.06-1.06 1.94 1.94 4.44-4.44 1.06 1.06-5.5 5.5z" /></svg>
                                     Drive Cloud Sync Active

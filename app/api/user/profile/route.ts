@@ -153,6 +153,8 @@ export async function GET() {
       ownApiKey: user.ownApiKey ? decrypt(user.ownApiKey) : null,
       hasOwnDriveKey: !!user.ownDriveKey,
       ownDriveKey: user.ownDriveKey ? decrypt(user.ownDriveKey) : null,
+      hasDriveOAuth: !!user.driveRefreshToken,
+      driveEmail: user.driveEmail || null,
       driveFolderId: user.driveFolderId || null,
       driveEnabled: user.driveEnabled ?? true,
       driveToggles: user.driveToggles ?? { audio: true, broadcast: true, image: true, music: true },

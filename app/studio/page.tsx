@@ -47,6 +47,8 @@ interface UserProfile {
   ownApiKey: string | null;
   hasOwnDriveKey: boolean;
   ownDriveKey: string | null;
+  hasDriveOAuth: boolean;
+  driveEmail: string | null;
   planActivatedAt: string | null;
   planExpiresAt?: string | null;
   daysLeft?: number | null;
@@ -431,7 +433,7 @@ export default function StudioPage() {
     setAudioLoading(true);
     setError("");
     setDriveStatus("idle");
-    if (profile?.hasOwnDriveKey) setDriveStatus("processing");
+    if (profile?.hasOwnDriveKey || profile?.hasDriveOAuth) setDriveStatus("processing");
 
     const endpoint = mode === "broadcast" ? "/api/generate-broadcast-audio" : "/api/generate";
     const payload = mode === "broadcast"
@@ -519,7 +521,7 @@ export default function StudioPage() {
     setAudioLoading(true);
     setError("");
     setDriveStatus("idle");
-    if (profile?.hasOwnDriveKey) setDriveStatus("processing");
+    if (profile?.hasOwnDriveKey || profile?.hasDriveOAuth) setDriveStatus("processing");
 
     try {
       const res = await fetch("/api/generate-music", {
@@ -590,7 +592,7 @@ export default function StudioPage() {
     setImageGenerating(true);
     setError("");
     setDriveStatus("idle");
-    if (profile?.hasOwnDriveKey) setDriveStatus("processing");
+    if (profile?.hasOwnDriveKey || profile?.hasDriveOAuth) setDriveStatus("processing");
 
     try {
       const res = await fetch("/api/generate-image", {
@@ -794,7 +796,7 @@ export default function StudioPage() {
               <button 
                 onClick={() => {
                   setHistoryTab("drive");
-                  if (profile?.hasOwnDriveKey) fetchDriveFiles();
+                  if (profile?.hasOwnDriveKey || profile?.hasDriveOAuth) fetchDriveFiles();
                 }}
                 className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${historyTab === 'drive' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
               >

@@ -8,7 +8,7 @@ This document explains the internal logic for generating Audio from the "Script 
 **Endpoint:** `/api/generate/route.ts`
 
 ### How it works:
-1. **Model Used:** `gemini-3.1-flash-tts-preview`
+1. **Model Used:** Configurable via `TTS_AI_MODEL` in `.env` (Defaults to `gemini-3.1-flash-tts-preview`)
 2. **Chunking Mechanism:** 
    - Gemini has a hard limit on how many characters it can process in a single request (around ~3000-4000 characters).
    - To bypass this, the server takes the full script and splits it into smaller pieces using the `chunkText` function (max 3000 characters per chunk).
@@ -31,7 +31,7 @@ This document explains the internal logic for generating Audio from the "Script 
 - **Result:** Gemini rejected the request due to payload/character limits, resulting in an "API Quota Exceeded" or "Invalid Argument" error.
 
 ### Current Updated Logic (The Fix):
-1. **Model Upgraded:** Now uses `gemini-3.1-flash-tts-preview`, matching the stability of the Script page.
+1. **Model Upgraded:** Now uses the model defined by `TTS_AI_MODEL` in `.env` (matching the stability of the Script page).
 2. **Internal Chunking Added:** 
    - The script is parsed to maintain the `[Speaker: Text]` format.
    - The script is then chunked line-by-line until a chunk hits ~3000 characters.

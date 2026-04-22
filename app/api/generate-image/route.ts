@@ -5,7 +5,7 @@ import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { withGeminiRetry } from "@/lib/gemini";
 import { decrypt } from "@/lib/encryption";
-import { PRO_DAILY_IMAGE_LIMIT } from "@/lib/constants";
+import { PRO_DAILY_IMAGE_LIMIT, TEXT_AI_MODEL } from "@/lib/constants";
 import {
   resetDailyIfNeeded,
   isProDailyLimitReached,
@@ -85,7 +85,7 @@ export async function POST(req: Request) {
       const ai = new GoogleGenAI({ apiKey: key });
       return await withGeminiRetry(() =>
         ai.models.generateContent({
-          model: "gemini-2.5-flash",
+          model: TEXT_AI_MODEL,
           contents: `You are a world-class AI image prompt engineer specializing in cinematic, editorial, and concept art visuals for platforms like Midjourney, Stable Diffusion, and Pollinations.ai.
 
 The user will give you a basic idea. Your job is to detect the best visual category for that idea and transform it into a rich, detailed, visually stunning prompt.

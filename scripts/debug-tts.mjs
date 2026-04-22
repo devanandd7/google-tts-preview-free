@@ -1,11 +1,28 @@
 // GenBox TTS Diagnostic Script
 // Run: node scripts/debug-tts.mjs
 
-const API_KEY = "AIzaSyDiy7S665nfc2AwXm2q2x8RiDLMdxL3VPY";
+import fs from 'fs';
+import path from 'path';
+
+// Load env
+const envPath = path.join(process.cwd(), '.env.local');
+if (fs.existsSync(envPath)) {
+  const envFile = fs.readFileSync(envPath, 'utf-8');
+  envFile.split('\n').forEach(line => {
+    const match = line.match(/^([^=]+)=(.*)$/);
+    if (match) {
+      process.env[match[1].trim()] = match[2].trim().replace(/^["']|["']$/g, '');
+    }
+  });
+}
+
+const API_KEY = process.env.GEMINI_API_KEY || "AIzaSyDiy7S665nfc2AwXm2q2x8RiDLMdxL3VPY";
+const TEXT_MODEL = process.env.TEXT_AI_MODEL || "gemini-2.5-flash";
+const TTS_MODEL = process.env.TTS_AI_MODEL || "gemini-3.1-flash-tts-preview";
 
 async function testGeminiFlash() {
-  console.log("\n[1] Testing gemini-2.5-flash (text generation) ...");
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`, {
+  console.log(`\n[1] Testing ${TEXT_MODEL} (text generation) ...`);
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${TEXT_MODEL}:generateContent?key=${API_KEY}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ contents: [{ parts: [{ text: "Say hello." }] }] })
@@ -21,7 +38,7 @@ async function testGeminiFlash() {
 }
 
 async function testOneTTS(text, voiceName = "Puck", label = "") {
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent?key=${API_KEY}`, {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${API_KEY}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -64,7 +81,7 @@ async function main() {
     console.log(`   Message: ${r1.msg?.slice(0,120)}`);
     if (r1.code === 429) {
       console.log("\n⛔ CONCLUSION: TTS QUOTA EXHAUSTED (429 Too Many Requests)");
-      console.log("   gemini-3.1-flash-tts-preview free tier = ~10 requests/day");
+      console.log(`   ${TTS_MODEL} free tier limits reached.`);
       console.log("   Reset time: Midnight UTC = 5:30 AM IST\n");
       console.log("   FIX: Add a fresh API key from aistudio.google.com in .env.local\n");
     } else if (r1.code === 400) {

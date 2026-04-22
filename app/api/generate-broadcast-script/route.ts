@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
-import { PRO_DAILY_BROADCAST_LIMIT } from "@/lib/constants";
+import { PRO_DAILY_BROADCAST_LIMIT, TEXT_AI_MODEL } from "@/lib/constants";
 import { withGeminiRetry } from "@/lib/gemini";
 import { decrypt } from "@/lib/encryption";
 import {
@@ -14,7 +14,7 @@ import {
 } from "@/lib/usage";
 import { VOICE_MAPPING, VOICE_GENDERS } from "@/lib/voices";
 
-const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
+const ADMIN_EMAILS = ["devanandutkarsh7@gmail.com"];
 
 export async function POST(req: Request) {
   try {
@@ -27,10 +27,11 @@ export async function POST(req: Request) {
     let user = await User.findOne({ clerkId: userId });
 
     const currentEmail =
-      (user?.email) ||
+      ((user?.email) ||
       (sessionClaims?.email as string) ||
       (sessionClaims?.primaryEmail as string) ||
-      "";
+      "").toLowerCase();
+    
     const isAdmin = ADMIN_EMAILS.includes(currentEmail);
 
     if (!user) {
@@ -101,7 +102,12 @@ export async function POST(req: Request) {
     const gender2 = VOICE_GENDERS[voice2] ?? "female";
 
     const langInstruction = isHindi
-      ? `LANGUAGE: Write ALL spoken dialogue in natural, conversational Hindi (Devanagari script). Mix in English words naturally (Hinglish). Match gender strictly: ${voice1} is ${gender1}, ${voice2} is ${gender2}. Use correct gendered Hindi grammar for each speaker at all times.`
+      ? `LANGUAGE: Write ALL spoken dialogue in natural, conversational Hindi (Devanagari script). Mix in English words naturally (Hinglish). 
+CRITICAL GENDER RULES: 
+- ${voice1} is ${gender1}. 
+- ${voice2} is ${gender2}. 
+- YOU MUST use strict gendered Hindi grammar (e.g., 'kar raha hoon' vs 'kar rahi hoon'). 
+- NEVER mix up the gendered verbs or adjectives for these speakers. This is for a production broadcast, so accuracy is mandatory.`
       : `LANGUAGE: Write ALL spoken dialogue in natural, fluent conversational English.`;
 
     const minWords = durationMinutes * 160;
@@ -110,9 +116,11 @@ export async function POST(req: Request) {
     const attemptScriptGen = async (key: string) => {
       const ai = new GoogleGenAI({ apiKey: key });
       return await withGeminiRetry(() =>
-        ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: `You are a professional LIVE RADIO BROADCAST writer. Create an energetic, natural 2-host show that sounds like a real RJ morning show — NOT a formal podcast, NOT two people reading a textbook.
+        (ai as any).models.generateContent({
+          model: TEXT_AI_MODEL,
+          contents: `You are a professional LIVE RADIO BROADCAST writer. Create an energetic, 
+natural 2-host show that sounds like a real RJ morning show — NOT a formal podcast, 
+NOT two people reading a textbook.
 
 ## STRICT FORMATTING — FOLLOW EXACTLY:
 1. Every line MUST start with [VoiceName: and end with ]
@@ -124,55 +132,68 @@ export async function POST(req: Request) {
 7. Alternate speakers naturally — max 3 consecutive lines per speaker
 
 ## THE GOLDEN RULE — WRITE HOW PEOPLE ACTUALLY TALK:
-Embed REAL human sounds and reactions DIRECTLY in the text. Expression tags alone are NOT enough — write the actual sounds:
+Embed REAL human sounds and reactions DIRECTLY in the text:
 
-### Write these sounds IN THE TEXT:
 - Laughter: "Hahaha!", "Hehe!", "Ahaha yaar!", "Haha sach mein!"
 - Surprise: "Ohhh!", "Wah wah!", "Arre!", "Wait WHAT?!", "Seriously?!"
 - Excitement: "Yesss!", "Bilkul bilkul!", "Ohoho!"
-- Thinking/Pause: "Hmmmm...", "Matlab...", "Ahhh..."
+- Thinking: "Hmmmm...", "Matlab...", "Ahhh..."
 - Agreement: "Haan haan!", "Exactly!", "Bilkul!"
 - Shock: "No way!", "Yeh toh kamal ho gaya!"
 
-### GEMINI TTS TAG LIBRARY (USE FREELY FOR VOICE ACTING):
-You have access to the full Gemini 3.1 TTS emotion engine. Use these tags to direct the AI voice acting:
-- Positive/Energetic: [happy] [excitedly] [enthusiasm] [joyful] [amusement] [friendly] [warm] [playful] [proud]
-- Negative/Intense (for drama): [frustration] [annoyance] [tension] [nervousness] [sad] [hostile] [tired] [exhausted]
-- Neutral/Pro: [serious] [informative] [professional] [calm] [thoughtful] [curious] [hesitant]
-- Pacing/Timing: [slow] [very slow] [fast] [very fast] [accelerating] [decelerating] [short pause] [long pause] [dramatic pause]
-- Vocal Texture: [whispers] [shouting] [muttering] [breathy] [hoarse] [booming]
-- Non-Verbal Sounds: [laughs] [giggles] [chuckles] [sighs] [gasps] [uhm] [cough] [snorts]
-- Character Styles: [narrator] [radio dj] [spooky] [gentle] [aggressive]
+## OFFICIAL GEMINI 3.1 TTS TAG LIBRARY:
+Use ONLY these verified tags. Place ONE tag at a time — NEVER two tags 
+consecutively. Always follow a tag immediately with spoken text.
 
-**INFINITE CUSTOMIZATION**: You can even invent descriptive tags like [like a tired detective in the rain] or [trying not to laugh] and the TTS engine will adapt!
+EMOTION TAGS:
+[happy] [enthusiasm] [amusement] [curiosity] [interest]
+[hope] [determination] [positive] [neutral] [negative]
+[frustration] [annoyance] [tension] [nervousness] [confusion]
+[anger] [agitation] [sadness] [fear] [disgust]
 
-### Energy MUST vary dynamically — never stay flat:
-- HIGH energy opening (RJ waking up the city / audience hook)
-- Warm/personal/funny mid-section
-- Excited peak at interesting reveal or fact
-- Warm memorable sign-off
+PACING TAGS:
+[slow] [fast] [short pause] [long pause]
 
-## REFERENCE — GREAT RADIO STYLE:
-[Dev: [radio dj] [excitedly] Good morning dosto! Studio mein aa gaye hain aur main hoon aapka host Dev, aur mere saath hain Sunidhi!]
-[Sunidhi: [warmly] [laughs] Hahaha! Shukriya Dev! Aaj ka topic waise ekdum zabardast hai, haina?]
-[Dev: [defensive] [fast] Arre bilkul! Warna main toh so jaata studio mein hi!]
-[Sunidhi: [surprised] Wait seriously?! [dramatic pause] Dev, tumne do cup coffee nahi pee?]
-[Dev: [confident] Bilkul bilkul! Par suno, aaj ka topic sunke tumhari bhi neend ude gi!]
-[Sunidhi: [eager] Ohoho! Batao batao Dev! Main ekdum ready hoon!]
-[Dev: [serious] [slow] Aaj baat karenge... [long pause] zindagi ke un choti choti khushiyon ki.]
-[Sunidhi: [softly] [thoughtful] Ahh... Dev, yeh toh dil ko chhu gaya. Sach mein hum in cheezon ko ignore karte hain.]
-[Dev: [warm] Haan yaar Sunidhi. [sighs] Aur aaj hum isko feel karenge — theek hai?]
-[Sunidhi: [cheerful] Bilkul! Aur listeners — aap bhi apni chai pakad lo, main aur Dev shuru karte hain!]
+VOCAL/NON-VERBAL TAGS:
+[whispers] [laughs] [chuckles] [sighs] [gasps] [uhm]
+
+### CORRECT TAG USAGE EXAMPLES:
+✅ [enthusiasm] Good morning dosto!
+✅ Hahaha! [amusement] Yaar yeh toh mujhe pata hi nahi tha!
+✅ [curiosity] Matlab... sach mein aisa hota hai?
+✅ [sighs] Haan yaar, [short pause] aaj ka din alag hi tha.
+
+### WRONG — NEVER DO THIS:
+❌ [radio dj] [excitedly] Good morning  ← two tags consecutive
+❌ [warmly] hello  ← not an official tag
+❌ [like a tired detective]  ← invented tag, will break output
+
+## ENERGY ARC — MUST VARY DYNAMICALLY:
+- HIGH energy opening — hook the audience immediately
+- Warm/funny mid-section — personal, relatable banter  
+- Excited peak — interesting reveal or fact drop
+- Warm sign-off — memorable, heartfelt close
+
+## REFERENCE — CORRECT RADIO STYLE:
+[${voice1}: [enthusiasm] Good morning dosto! Main hoon ${voice1} — aur mere saath hain ${voice2}!]
+[${voice2}: [laughs] Hahaha! Shukriya ${voice1}! Aaj ka topic ekdum zabardast hai!]
+[${voice1}: Arre bilkul! [amusement] Warna main toh studio mein so jaata!]
+[${voice2}: [gasps] Wait seriously?! [short pause] Bhai, tune coffee nahi pee kya?]
+[${voice1}: [determination] Pee toh li — par suno, aaj ka topic sunke neend ude gi!]
+[${voice2}: [curiosity] Ohoho! Batao batao — main ready hoon!]
+[${voice1}: [slow] Aaj baat karenge... [long pause] zindagi ki choti choti khushiyon ki.]
+[${voice2}: [sighs] Ahh... ${voice1} yeh toh dil ko chhu gaya. Sach mein hum bhool jaate hain.]
+[${voice1}: Haan yaar. [short pause] Aur aaj hum isko feel karenge — theek hai?]
+[${voice2}: [happy] Bilkul! Listeners — chai pakad lo, hum shuru karte hain!]
 
 ## CONTENT:
-Speaker 1: ${voice1} (${gender1}) — energetic, humorous, drives the show with enthusiasm
+Speaker 1: ${voice1} (${gender1}) — energetic, humorous, drives the show
 Speaker 2: ${voice2} (${gender2}) — warm, witty, great at reactions and depth
-Target length: ${minWords}–${maxWords} words for a ${durationMinutes}-minute broadcast
+Target: ${minWords}–${maxWords} words for a ${durationMinutes}-minute broadcast
 Topic: ${prompt}
-
 ${langInstruction}
 
-Write the broadcast directly — open with HIGH ENERGY:`,
+Write the broadcast directly — open with HIGH ENERGY:`
         })
       );
     };
@@ -181,10 +202,27 @@ Write the broadcast directly — open with HIGH ENERGY:`,
     try {
       response = await attemptScriptGen(userApiKey || serverApiKey);
     } catch (err: any) {
-      throw err;
+      const msg = err?.message?.toLowerCase() || "";
+      const isKeyError =
+        err.code === "QUOTA_EXCEEDED" ||
+        err.code === "INVALID_KEY" ||
+        err.code === "OVERLOADED" ||
+        msg.includes("denied access") ||
+        msg.includes("permission_denied") ||
+        msg.includes("api_key_invalid") ||
+        msg.includes("quota") ||
+        msg.includes("exceeded") ||
+        msg.includes("invalid");
+
+      if (userApiKey && isKeyError && user.plan !== "pro") {
+        console.warn("[Broadcast Script Fallback] User key failed. Falling back to server key.");
+        response = await attemptScriptGen(serverApiKey);
+      } else {
+        throw err;
+      }
     }
 
-    const script = response.text;
+    const script = (response as any).text;
     if (!script) {
       return NextResponse.json({ error: "Failed to generate broadcast script" }, { status: 500 });
     }
@@ -195,12 +233,12 @@ Write the broadcast directly — open with HIGH ENERGY:`,
 
     return NextResponse.json({
       script,
-      tokenUsage: response?.usageMetadata?.totalTokenCount || 0,
+      tokenUsage: (response as any)?.usageMetadata?.totalTokenCount || 0,
       usage: {
-        broadcastCount:      user.broadcastCount,
+        broadcastCount: user.broadcastCount,
         dailyBroadcastCount: getDailyCount(user, "broadcast"),
-        dailyLimit:          PRO_DAILY_BROADCAST_LIMIT,
-        plan:                user.plan,
+        dailyLimit: PRO_DAILY_BROADCAST_LIMIT,
+        plan: user.plan,
       },
     });
   } catch (err: any) {

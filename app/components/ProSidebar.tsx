@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { toast } from "./Toaster";
+import { PRO_PRICE_INR } from "@/lib/constants";
 
 interface ProSidebarProps {
     isPro: boolean;
@@ -151,7 +152,7 @@ export function ProSidebar({
 
                         {!isPro && !profile?.isAdmin && (
                             <button onClick={onUpgradeClick} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-indigo-600/20">
-                                Upgrade to Pro (₹49)
+                                Upgrade to Pro (₹{PRO_PRICE_INR})
                             </button>
                         )}
                     </div>

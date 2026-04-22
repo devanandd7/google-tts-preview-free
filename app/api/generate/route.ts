@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
-import { FREE_DIRECT_TTS_LIMIT, PRO_DAILY_DIRECT_TTS_LIMIT } from "@/lib/constants";
+import { FREE_DIRECT_TTS_LIMIT, PRO_DAILY_DIRECT_TTS_LIMIT, TTS_AI_MODEL } from "@/lib/constants";
 import { withGeminiRetry } from "@/lib/gemini";
 import { decrypt } from "@/lib/encryption";
 import {
@@ -144,7 +144,7 @@ export async function POST(req: Request) {
       const ai = new GoogleGenAI({ apiKey: key });
       return await withGeminiRetry(() =>
         ai.models.generateContent({
-          model: "gemini-3.1-flash-tts-preview",
+          model: TTS_AI_MODEL,
           contents: chunkedScript,
           config: {
             responseModalities: ["AUDIO"],

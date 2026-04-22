@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { GoogleGenAI } from "@google/genai";
+import { TEXT_AI_MODEL } from "@/lib/constants";
 
 // In-memory rate limiting map: { userId: { count, resetTime } }
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
@@ -51,7 +52,7 @@ export async function POST(req: Request) {
         try {
             const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
             await ai.models.generateContent({
-                model: "gemini-2.0-flash",
+                model: TEXT_AI_MODEL,
                 contents: "hi",
             });
             return NextResponse.json({ valid: true });

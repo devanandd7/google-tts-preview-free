@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
-import { FREE_AI_SCRIPT_LIMIT, PRO_DAILY_AI_SCRIPT_LIMIT } from "@/lib/constants";
+import { FREE_AI_SCRIPT_LIMIT, PRO_DAILY_AI_SCRIPT_LIMIT, TEXT_AI_MODEL } from "@/lib/constants";
 import { withGeminiRetry } from "@/lib/gemini";
 import { decrypt } from "@/lib/encryption";
 import {
@@ -105,41 +105,62 @@ export async function POST(req: Request) {
       const ai = new GoogleGenAI({ apiKey: key });
       return await withGeminiRetry(() =>
         ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: `You are a master TTS script director for Google Gemini's native audio model. Your scripts are vivid, emotionally rich, and highly performable.
+          model: TEXT_AI_MODEL,
+          contents: `You are a master TTS script director for Google Gemini 3.1 Flash TTS. 
+Your scripts are natural, emotionally grounded, and professionally performable. 
+Avoid melodrama — aim for authentic human conversation.
 
-Given a user's idea, generate a fully-formed, emotionally expressive TTS director-style script with ALL of these sections:
+Given a user's idea, generate a complete TTS director-style script:
 
 **# AUDIO PROFILE**
-Name: ${voice}. Role: Warm Storyteller / Character role based on the idea. Define their personality, age, and speaking style briefly.
-CRITICAL: The narrator MUST introduce themselves as "${voice}" or refer to themselves by this name within the script naturally (e.g., "Namaste, main hoon ${voice}..." or "Hi, I'm ${voice}...").
+Name: ${voice}. Define personality, age, speaking style based on the idea.
+CRITICAL: ${voice} must introduce themselves naturally in the first few lines.
 
-**## THE SCENE**  
-Describe the physical environment, time of day, mood, and emotional atmosphere in 2–3 vivid sentences. This sets the stage for the performance.
+**## THE SCENE**
+2 brief sentences: physical environment, mood, emotional atmosphere.
 
-**### DIRECTOR'S NOTES**  
-- **Style:** (e.g., Conversational, nostalgic, theatrical, suspenseful)
-- **Pace:** (e.g., Slow with dramatic pauses, energetic, measured)
-- **Accent:** (e.g., Warm baritone, London street accent, neutral American)
+**### DIRECTOR'S NOTES**
+- Style: (e.g., Warm conversational, professional, thoughtful storytelling)
+- Pace: (e.g., Steady, unhurried, measured)
+- Tone: (e.g., Grounded, calm, authoritative but friendly)
 
-**#### TRANSCRIPT**  
-Write ${minWords}–${maxWords} words of spoken text to explicitly target an engaging, precise ${durationMinutes}-minute audio performance. Heavily use inline emotion and performance tags:
-- [pause] — silence for dramatic effect
-- [whispers] — spoken very softly, intimately
-- [shouting] — raised, emotional voice
-- [excitedly] — energized delivery
-- [laughs] — brief laugh in the middle of speech
-- [sighs] — audible exhale, emotional
-- [softly] — gentle, tender tone
-- [slowly] — drawn out delivery
+**#### TRANSCRIPT**
+Write ${minWords}–${maxWords} words targeting a ${durationMinutes}-minute performance.
 
-Match the emotional journey of the user's idea. Use contrasting emotions (e.g., joy then sadness then resolve). The transcript should feel like a real human performance, not a reading.
+Use ONLY these officially supported Gemini 3.1 Flash TTS inline tags:
+
+PAUSE TAGS (for pacing):
+- [short pause] — brief breath or hesitation
+- [pause] — 1-second silence for natural pacing  
+- [long pause] — longer dramatic silence
+
+EXPRESSIVE TAGS (for emotion — use sparingly, max 1 per 3 sentences):
+- [positive] — warm, welcoming delivery
+- [neutral] — calm, steady, relaxed tone
+- [curiosity] — thoughtful, slightly wondering
+- [interest] — engaged, focused delivery
+- [hope] — gentle optimism in voice
+- [amusement] — light, warm humor (NOT over-laughing)
+- [determination] — grounded, confident emphasis
+- [sighs] — soft natural exhale
+- [laughs] — brief, genuine laugh mid-speech
+- [whispers] — intimate, soft delivery
+- [slow] — draw out for emotional weight
+- [fast] — slightly quicken pace for energy
+
+CRITICAL TAG RULES (follow strictly or audio breaks):
+1. NEVER place two tags directly next to each other — always text between them
+2. Maximum 1 tag per 3 sentences — emotion comes from word choice, not tags
+3. Tags are in English only, even if script is in Hindi/other language
+4. Wrong: [positive][pause] — Right: [positive] Aaj ki baat suniye. [pause]
+
+Emotional arc: Subtle and real. No dramatic highs/lows. 
+Feel like a real human speaking — not a voice performance demo.
 
 ${langInstruction}
-
 User's idea: ${prompt}
 
-Return ONLY the formatted script. No commentary, no explanations.`,
+Return ONLY the formatted script. No commentary, no explanations.`
         })
       );
     };
@@ -149,9 +170,9 @@ Return ONLY the formatted script. No commentary, no explanations.`,
       response = await attemptScriptGen(userApiKey || serverApiKey);
     } catch (err: any) {
       const msg = err?.message?.toLowerCase() || "";
-      const isKeyError = 
-        err.code === "QUOTA_EXCEEDED" || 
-        err.code === "INVALID_KEY" || 
+      const isKeyError =
+        err.code === "QUOTA_EXCEEDED" ||
+        err.code === "INVALID_KEY" ||
         err.code === "OVERLOADED" ||
         msg.includes("denied access") ||
         msg.includes("permission_denied") ||
@@ -181,10 +202,10 @@ Return ONLY the formatted script. No commentary, no explanations.`,
       script,
       tokenUsage: response?.usageMetadata?.totalTokenCount || 0,
       usage: {
-        aiScriptCount:      user.aiScriptCount,
+        aiScriptCount: user.aiScriptCount,
         dailyAiScriptCount: getDailyCount(user, "aiScript"),
-        dailyLimit:         PRO_DAILY_AI_SCRIPT_LIMIT,
-        plan:               user.plan,
+        dailyLimit: PRO_DAILY_AI_SCRIPT_LIMIT,
+        plan: user.plan,
       },
     });
   } catch (err: any) {

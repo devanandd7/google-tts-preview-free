@@ -110,7 +110,7 @@ async function generateSample(voiceName: string, gender: string, language: strin
     console.log(`Generating ${language}/${voiceName}...`);
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-3.1-flash-tts-preview",
+            model: process.env.TTS_AI_MODEL || "gemini-3.1-flash-tts-preview",
             contents: lockedScript,
             config: {
                 responseModalities: ["AUDIO"],

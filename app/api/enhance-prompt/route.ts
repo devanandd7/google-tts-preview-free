@@ -5,6 +5,7 @@ import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { withGeminiRetry } from "@/lib/gemini";
 import { decrypt } from "@/lib/encryption";
+import { TEXT_AI_MODEL } from "@/lib/constants";
 
 export async function POST(req: Request) {
   try {
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
       const ai = new GoogleGenAI({ apiKey: key });
       return await withGeminiRetry(() =>
         ai.models.generateContent({
-          model: "gemini-2.5-flash",
+          model: TEXT_AI_MODEL,
           contents: `You are an expert prompt engineer for AI image generators (like Midjourney, Stable Diffusion, or Pollinations.ai).
 The user will give you a basic idea, and you must transform it into a highly detailed, descriptive, visually rich prompt that specifies:
 - Subject details, pose, and lighting

@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { PRO_PRICE_INR, PRO_PRICE_OLD_INR } from "@/lib/constants";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
@@ -137,6 +138,8 @@ export default function LandingPage() {
       setPlayingId(id);
     }
   };
+
+  const discountPercent = Math.round(((PRO_PRICE_OLD_INR - PRO_PRICE_INR) / PRO_PRICE_OLD_INR) * 100);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 selection:bg-indigo-500/30">
@@ -464,10 +467,10 @@ export default function LandingPage() {
                   </div>
                   <div className="text-right flex flex-col items-end">
                     <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-indigo-300 line-through text-xs md:text-sm font-bold opacity-50">₹329</span>
-                      <span className="px-1.5 py-0.5 bg-rose-500 text-white text-[8px] font-black uppercase rounded-sm animate-pulse">85% OFF</span>
+                      <span className="text-indigo-300 line-through text-xs md:text-sm font-bold opacity-50">₹{PRO_PRICE_OLD_INR}</span>
+                      <span className="px-1.5 py-0.5 bg-rose-500 text-white text-[8px] font-black uppercase rounded-sm animate-pulse">{discountPercent}% OFF</span>
                     </div>
-                    <span className="text-3xl md:text-4xl font-black text-white italic leading-none">₹49</span>
+                    <span className="text-3xl md:text-4xl font-black text-white italic leading-none">₹{PRO_PRICE_INR}</span>
                     <p className="text-indigo-300 text-[8px] font-bold uppercase tracking-widest mt-1">Billed Monthly</p>
                   </div>
                 </div>

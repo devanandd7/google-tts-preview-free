@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import * as dotenv from "dotenv";
 import path from "path";
 import User from "../models/User";
+import { PRO_PRICE_PAISE } from "../lib/constants";
 
 dotenv.config({ path: path.join(__dirname, "../.env.local") });
 
@@ -32,7 +33,7 @@ async function run() {
   const record = {
     razorpayOrderId: "order_SfXWpZllPEoUlf",
     razorpayPaymentId: "pay_SfXWzRd6jllAEY",
-    amountPaise: 4900,
+    amountPaise: PRO_PRICE_PAISE,
     currency: "INR",
     paidAt: now,
     planActivatedAt: now,

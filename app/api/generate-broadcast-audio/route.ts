@@ -5,7 +5,7 @@ import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { withGeminiRetry } from "@/lib/gemini";
 import { decrypt } from "@/lib/encryption";
-import { PRO_DAILY_BROADCAST_LIMIT } from "@/lib/constants";
+import { PRO_DAILY_BROADCAST_LIMIT, TTS_AI_MODEL } from "@/lib/constants";
 import { VOICE_MAPPING } from "@/lib/voices";
 import { uploadToDrive } from "@/lib/google-drive";
 
@@ -36,34 +36,38 @@ function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 
 // ─── Script Cleaner ───────────────────────────────────────────────────────────
 function cleanScriptForMultiSpeaker(script: string, voice1: string, voice2: string): string {
   const lines: string[] = [];
+  // Updated Regex: Handles [Name: text], [Name-Emotion: text], and simple Name: text
+  // Supports Devanagari and Latin names
+  const pattern = /(?:^|[\r\n])\s*\[?([\w\s\u0900-\u097F]+)(?:-[^:\]]+)?[:\]]\s*([\s\S]*?)(?=\s*[\r\n]\s*\[?[\w\s\u0900-\u097F]+(?:-[^:\]]+)?[:\]]|$)/g;
 
-  for (const rawLine of script.split("\n")) {
-    const line = rawLine.trim();
-    if (!line.startsWith("[")) continue;
+  let match;
+  while ((match = pattern.exec(script)) !== null) {
+    const rawName = match[1].trim();
+    let text = match[2].trim();
 
-    const colonIdx = line.indexOf(":");
-    if (colonIdx === -1) continue;
-
-    const rawName = line.slice(1, colonIdx).trim();
-    const isV2 = rawName.toLowerCase().includes(voice2.toLowerCase());
     const isV1 = rawName.toLowerCase().includes(voice1.toLowerCase());
-    const speaker = isV2 && !isV1 ? voice2 : isV1 ? voice1 : null;
+    const isV2 = rawName.toLowerCase().includes(voice2.toLowerCase());
+
+    // Priority to exact match or inclusion
+    const speaker = isV1 ? voice1 : (isV2 ? voice2 : null);
 
     if (!speaker) continue;
 
-    let text = line
-      .slice(colonIdx + 1)
-      .replace(/\]\s*$/, "")
-      .trim();
+    // Clean up trailing brackets and extra spaces
+    text = text.replace(/\]\s*$/, "").trim();
     text = text.replace(/\s{2,}/g, " ").trim();
-    if (!text) continue;
 
-    lines.push(`${speaker}: ${text}`);
+    if (text) {
+      lines.push(`${speaker}: ${text}`);
+    }
   }
 
   if (lines.length === 0) {
-    console.warn("[Broadcast] cleanScript produced 0 lines — using raw script as fallback");
-    return script;
+    console.warn("[Broadcast Audio] Regex parser produced 0 lines — falling back to basic split");
+    return script.split("\n")
+      .filter(l => l.includes(":"))
+      .map(l => l.replace(/^\[/, "").replace(/\]$/, "").trim())
+      .join("\n");
   }
 
   return lines.join("\n");
@@ -124,42 +128,29 @@ export async function POST(req: Request) {
 
     const userApiKey = user.plan === "pro" && user.ownApiKey ? decrypt(user.ownApiKey) : null;
     const serverApiKey = process.env.GEMINI_API_KEY!;
-    
+
     let activeKey = userApiKey || serverApiKey;
 
     const geminiVoice1 = VOICE_MAPPING[voice1] || voice1;
     const geminiVoice2 = VOICE_MAPPING[voice2] || voice2;
 
     const cleanedScript = cleanScriptForMultiSpeaker(script, voice1, voice2);
-    
-    // Split into chunks by lines to preserve [Voice: Text] format per line
-    const scriptChunks: string[] = [];
-    let currentChunk = "";
-    for (const line of cleanedScript.split("\n")) {
-      // Chunk at ~3000 chars to avoid hitting model input limits safely
-      if ((currentChunk + "\n" + line).length > 3000) {
-        if (currentChunk) scriptChunks.push(currentChunk.trim());
-        currentChunk = line;
-      } else {
-        currentChunk += (currentChunk ? "\n" : "") + line;
-      }
-    }
-    if (currentChunk) scriptChunks.push(currentChunk.trim());
 
-    if (scriptChunks.length === 0) {
-      return NextResponse.json({ error: "Could not parse any dialogue from the script." }, { status: 400 });
-    }
+    console.log(`[Broadcast Audio] Generating full broadcast audio without chunking.`);
 
-    console.log(`[Broadcast Audio] Script split into ${scriptChunks.length} chunk(s) for 3.1 Flash TTS.`);
-
-    const audioBuffers: Buffer[] = [];
-
-    const attemptMultiSpeakerTTS = async (key: string, chunkedScript: string) => {
+    const callGeminiTTS = async (key: string, fullScript: string) => {
       const ai = new GoogleGenAI({ apiKey: key });
+
+      const systemInstruction = `You are directing a high-energy professional FM radio broadcast. 
+Two RJ hosts are live on air — maintain consistent vocal energy, natural pacing, and distinct character voices throughout.
+
+All inline tags like [enthusiasm] or [laughs] are official Gemini TTS audio direction tags — they control vocal delivery automatically. Never speak them aloud.`;
+
       return await withGeminiRetry(() =>
-        ai.models.generateContent({
-          model: "gemini-3.1-flash-tts-preview",
-          contents: chunkedScript,
+        (ai as any).models.generateContent({
+          model: TTS_AI_MODEL,
+          system_instruction: systemInstruction,
+          contents: fullScript,
           config: {
             responseModalities: ["AUDIO"],
             speechConfig: {
@@ -185,44 +176,38 @@ export async function POST(req: Request) {
       );
     };
 
-    for (let i = 0; i < scriptChunks.length; i++) {
-      const chunk = scriptChunks[i];
-      let ttsResponse;
-      try {
-        ttsResponse = await attemptMultiSpeakerTTS(activeKey, chunk);
-      } catch (err: any) {
-        const msg = err?.message?.toLowerCase() || "";
-        const isKeyError = 
-          err.code === "QUOTA_EXCEEDED" || 
-          err.code === "INVALID_KEY" || 
-          err.code === "OVERLOADED" ||
-          msg.includes("denied access") ||
-          msg.includes("permission_denied") ||
-          msg.includes("api_key_invalid") ||
-          msg.includes("quota") ||
-          msg.includes("exceeded") ||
-          msg.includes("invalid");
+    let ttsResponse;
+    let attempts = 0;
+    const maxAttempts = 2; // 1 initial + 1 retry
 
-        if (activeKey === userApiKey && isKeyError && user.plan !== "pro") {
-          console.warn(`[Broadcast Audio] Chunk ${i+1}: User key failed, falling back to server key.`);
-          activeKey = serverApiKey;
-          ttsResponse = await attemptMultiSpeakerTTS(activeKey, chunk);
+    while (attempts < maxAttempts) {
+      try {
+        attempts++;
+        ttsResponse = await callGeminiTTS(activeKey, cleanedScript);
+        break; // Success!
+      } catch (err: any) {
+        console.error(`[Broadcast Audio] Attempt ${attempts} failed:`, err.message);
+
+        if (attempts < maxAttempts) {
+          console.log("[Broadcast Audio] Retrying in 2 seconds...");
+          await new Promise(resolve => setTimeout(resolve, 2000));
+
+          // If first attempt with user key failed, try fallback on retry if applicable
+          if (activeKey === userApiKey && user.plan !== "pro") {
+            activeKey = serverApiKey;
+          }
         } else {
-          throw err;
+          throw err; // Final attempt failed
         }
       }
-
-      const audioData = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (!audioData) {
-        throw new Error(`Failed to generate audio for chunk ${i+1}`);
-      }
-      audioBuffers.push(Buffer.from(audioData, "base64"));
     }
 
-    console.log(`[Broadcast Audio] Successfully stitched ${audioBuffers.length} audio chunks.`);
+    const audioData = (ttsResponse as any)?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!audioData) {
+      throw new Error(`Failed to generate audio after ${attempts} attempts.`);
+    }
 
-    const pcmBuffer = Buffer.concat(audioBuffers);
-    const wavBuffer = pcmToWav(pcmBuffer);
+    const wavBuffer = pcmToWav(Buffer.from(audioData, "base64"));
     const audioBase64 = wavBuffer.toString("base64");
 
     // ── Google Drive Auto-Backup ────────────────────────────────────────────────
@@ -234,7 +219,7 @@ export async function POST(req: Request) {
         const jsonKey = user.ownDriveKey ? decrypt(user.ownDriveKey) : undefined;
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
         const fileName = `GenBox_Broadcast_${voice1}_${voice2}_${timestamp}.wav`;
-        
+
         const driveResult = await uploadToDrive(jsonKey, wavBuffer, fileName, "audio/wav", user.driveFolderId, user.driveRefreshToken);
         driveUploadStatus = "success";
         driveFileLink = driveResult.webViewLink;
@@ -255,10 +240,10 @@ export async function POST(req: Request) {
       driveUploadStatus,
       driveFileLink,
       usage: {
-        broadcastCount:      user.broadcastCount      ?? 0,
+        broadcastCount: user.broadcastCount ?? 0,
         dailyBroadcastCount: user.dailyBroadcastCount ?? 0,
-        dailyLimit:          PRO_DAILY_BROADCAST_LIMIT,
-        plan:                user.plan,
+        dailyLimit: PRO_DAILY_BROADCAST_LIMIT,
+        plan: user.plan,
       },
     });
   } catch (err: any) {

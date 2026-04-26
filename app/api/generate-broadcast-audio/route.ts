@@ -4,12 +4,16 @@ import { sanitizeScriptTags, stripSpeakerLabels } from "@/lib/tts-tags";
 import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
+import fs from "fs";
+import path from "path";
 import { withGeminiRetry } from "@/lib/gemini";
 import { decrypt } from "@/lib/encryption";
 import { PRO_DAILY_BROADCAST_LIMIT, TTS_AI_MODEL } from "@/lib/constants";
 import { VOICE_MAPPING } from "@/lib/voices";
 import { uploadToDrive } from "@/lib/google-drive";
 import { getTimeContext } from "@/lib/time-context";
+import { normalizeAudioBuffer, mixBackgroundMusic, fixSpeechTempo } from "@/lib/audio-processing";
+import { getRandomBgMusic } from "@/lib/bgm";
 
 // ─── WAV Header Builder ───────────────────────────────────────────────────────
 function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 16): Buffer {
@@ -112,6 +116,8 @@ export async function POST(req: Request) {
       voice1, 
       voice2,
       useTimeContext = false,
+      useBgMusic = false,
+      selectedBgm = null,
       timezoneOffset = 330 // Default IST
     } = await req.json();
 
@@ -239,7 +245,48 @@ export async function POST(req: Request) {
       throw new Error(`Failed to generate audio after ${attempts} attempts.`);
     }
 
-    const wavBuffer = pcmToWav(Buffer.from(audioData, "base64"));
+    const pcmBuffer = Buffer.from(audioData, "base64");
+    let wavBuffer = pcmToWav(pcmBuffer);
+
+    // ── Apply FFmpeg Audio Normalization & Tempo Fix ──────────────────────────
+    try {
+      console.log("[Broadcast Audio] Fixing tempo to prevent rushing...");
+      wavBuffer = await fixSpeechTempo(wavBuffer);
+
+      console.log("[Broadcast Audio] Normalizing volume via FFmpeg...");
+      wavBuffer = await normalizeAudioBuffer(wavBuffer);
+      
+      if (useBgMusic) {
+        console.log("[Broadcast Audio] Mixing Background Music...");
+        const bgmUrl = selectedBgm || await getRandomBgMusic();
+        if (bgmUrl) {
+          wavBuffer = await mixBackgroundMusic(wavBuffer, bgmUrl);
+        } else {
+          console.warn("[Broadcast Audio] Background music requested but none found.");
+        }
+      }
+    } catch (ffmpegErr) {
+      console.error("[Audio Normalization Failed] Continuing with raw audio.", ffmpegErr);
+    }
+
+    // ── Save Final Audio to Public Folder ──────────────────────────────────────
+    let publicFilePath = "";
+    try {
+      const outputDir = path.join(process.cwd(), "public", "final_broadcasts");
+      if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+      
+      const timestamp = new Date().getTime();
+      const fileName = `broadcast_${voice1}_${voice2}_${timestamp}.wav`;
+      publicFilePath = path.join(outputDir, fileName);
+      fs.writeFileSync(publicFilePath, wavBuffer);
+      console.log(`[Broadcast Audio] Saved to: ${publicFilePath}`);
+      
+      // Make it relative for client access
+      publicFilePath = `/final_broadcasts/${fileName}`;
+    } catch (saveErr) {
+      console.error("[Final Save Error]", saveErr);
+    }
+
     const audioBase64 = wavBuffer.toString("base64");
 
     // ── Google Drive Auto-Backup ────────────────────────────────────────────────
@@ -269,6 +316,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       audioBase64,
+      publicFilePath,
       driveUploadStatus,
       driveFileLink,
       usage: {

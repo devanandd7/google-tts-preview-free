@@ -41,6 +41,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 
+# local storage
+public/final_broadcasts
+public/temp_bgm
+public/output_audio
+
 # secrets
 genbox-1-97eb1c75e9f9.json
 

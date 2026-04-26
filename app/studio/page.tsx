@@ -147,6 +147,67 @@ const SAMPLE_PROMPTS = [
   },
 ];
 
+const BgmSelector = ({
+  useBgMusic, setUseBgMusic, bgmList, selectedBgm, setSelectedBgm, playingBgm, setPlayingBgm
+}: any) => {
+  if (!useBgMusic) return null;
+
+  const handlePlay = (url: string) => {
+    if (playingBgm === url) {
+      setPlayingBgm(null);
+    } else {
+      setPlayingBgm(url);
+    }
+  };
+
+  return (
+    <div className="mt-4 p-4 rounded-xl bg-white/[0.02] border border-white/[0.05] animate-in fade-in duration-300">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select Background Music</span>
+        <span className="text-[10px] text-slate-500 font-bold uppercase">{bgmList.length} Tracks Available</span>
+      </div>
+      
+      {bgmList.length === 0 ? (
+        <div className="text-[10px] text-slate-500 font-mono text-center py-2">No music found in 'GenBox 1/bg_music'</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto custom-scrollbar pr-2">
+          {/* Option for Random */}
+          <div 
+            onClick={() => setSelectedBgm(null)}
+            className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all border ${selectedBgm === null ? 'bg-indigo-600/20 border-indigo-500/50' : 'bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.05]'}`}
+          >
+            <div className={`w-3 h-3 rounded-full border-2 ${selectedBgm === null ? 'border-indigo-400 bg-indigo-500' : 'border-slate-600'}`} />
+            <span className="text-xs font-bold text-white uppercase tracking-wider">Surprise Me (Random)</span>
+          </div>
+
+          {bgmList.map((bgm: any, idx: number) => (
+            <div 
+              key={idx}
+              onClick={() => setSelectedBgm(bgm.url)}
+              className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all border ${selectedBgm === bgm.url ? 'bg-indigo-600/20 border-indigo-500/50' : 'bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.05]'}`}
+            >
+              <div className="flex items-center gap-3 truncate">
+                <div className={`w-3 h-3 rounded-full shrink-0 border-2 ${selectedBgm === bgm.url ? 'border-indigo-400 bg-indigo-500' : 'border-slate-600'}`} />
+                <span className="text-[11px] font-bold text-slate-300 truncate">{bgm.name.replace('.mp3', '').replace('.wav', '')}</span>
+              </div>
+              <button 
+                onClick={(e) => { e.stopPropagation(); handlePlay(bgm.url); }}
+                className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center transition-colors ${playingBgm === bgm.url ? 'bg-indigo-500 text-white' : 'bg-white/10 hover:bg-white/20 text-slate-300'}`}
+              >
+                {playingBgm === bgm.url ? '⏹' : '▶'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      
+      {/* Hidden audio element for preview */}
+      {playingBgm && <audio src={playingBgm} autoPlay onEnded={() => setPlayingBgm(null)} />}
+    </div>
+  );
+};
+
+
 export default function StudioPage() {
   const [mode, setMode] = useState<Mode>("direct");
   // Language — persisted in localStorage, default hindi
@@ -179,6 +240,12 @@ export default function StudioPage() {
   const [useTimeContext, setUseTimeContext] = useState(false);
   const [timezoneOffset, setTimezoneOffset] = useState(330); // Default IST
 
+  // Audio Features State
+  const [useBgMusic, setUseBgMusic] = useState(false);
+  const [bgmList, setBgmList] = useState<{name: string, url: string}[]>([]);
+  const [selectedBgm, setSelectedBgm] = useState<string | null>(null);
+  const [playingBgm, setPlayingBgm] = useState<string | null>(null); // For preview
+
   const [loading, setLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
   const [error, setError] = useState("");
@@ -200,10 +267,23 @@ export default function StudioPage() {
   const razorpayReady = useRazorpay();
   const { user } = useUser();
 
-  // Load profile on mount
+  // Load profile and BGM on mount
   useEffect(() => {
     setHasMounted(true);
+    fetchBgmList();
   }, []);
+
+  const fetchBgmList = async () => {
+    try {
+      const res = await fetch("/api/bgm-list");
+      if (res.ok) {
+        const data = await res.json();
+        setBgmList(data.files || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch BGM list", err);
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -469,8 +549,8 @@ export default function StudioPage() {
 
     const endpoint = mode === "broadcast" ? "/api/generate-broadcast-audio" : "/api/generate";
     const payload = mode === "broadcast"
-      ? { script, voice1, voice2, useTimeContext, timezoneOffset }
-      : { script, voice };
+      ? { script, voice1, voice2, useTimeContext, timezoneOffset, useBgMusic, selectedBgm }
+      : { script, voice, useBgMusic, selectedBgm };
 
     try {
       const res = await fetch(endpoint, {
@@ -1091,6 +1171,18 @@ export default function StudioPage() {
                         <button onClick={() => setDirectScript("")} className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-[9px] font-black text-slate-400 hover:text-red-400 uppercase tracking-widest border border-white/5 transition-all">Clear</button>
                       </div>
                     </div>
+                    <div className="flex items-center justify-end mt-4 mb-2">
+                      <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setUseBgMusic(!useBgMusic)}>
+                        <div className="flex flex-col items-end text-right">
+                          <span className="text-[10px] font-black text-white uppercase tracking-widest">Background Music</span>
+                          <span className="text-[8px] text-slate-500 font-bold uppercase tracking-tighter">Auto-mix cinematic track</span>
+                        </div>
+                        <div className={`w-10 h-5 rounded-full relative transition-all duration-300 ${useBgMusic ? 'bg-indigo-600' : 'bg-slate-700'}`}>
+                          <div className={`absolute top-[2px] w-4 h-4 bg-white rounded-full transition-all duration-300 ${useBgMusic ? 'right-1' : 'left-1'}`} />
+                        </div>
+                      </div>
+                    </div>
+                    <BgmSelector {...{useBgMusic, setUseBgMusic, bgmList, selectedBgm, setSelectedBgm, playingBgm, setPlayingBgm}} />
                   </div>
 
                   <InlineVoiceGenRow
@@ -1138,8 +1230,20 @@ export default function StudioPage() {
                           value={userIdea}
                           onChange={e => setUserIdea(e.target.value)}
                           placeholder="Describe the mood, tone, and story..."
-                          className="w-full bg-white/[0.02] border border-white/[0.08] focus:border-indigo-500/50 rounded-2xl px-6 py-5 text-white outline-none transition-all text-sm leading-relaxed resize-none"
                         />
+
+                        <div className="flex items-center justify-end mt-4 mb-2">
+                          <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setUseBgMusic(!useBgMusic)}>
+                            <div className="flex flex-col items-end text-right">
+                              <span className="text-[10px] font-black text-white uppercase tracking-widest">Background Music</span>
+                              <span className="text-[8px] text-slate-500 font-bold uppercase tracking-tighter">Auto-mix cinematic track</span>
+                            </div>
+                            <div className={`w-10 h-5 rounded-full relative transition-all duration-300 ${useBgMusic ? 'bg-indigo-600' : 'bg-slate-700'}`}>
+                              <div className={`absolute top-[2px] w-4 h-4 bg-white rounded-full transition-all duration-300 ${useBgMusic ? 'right-1' : 'left-1'}`} />
+                            </div>
+                          </div>
+                        </div>
+                        <BgmSelector {...{useBgMusic, setUseBgMusic, bgmList, selectedBgm, setSelectedBgm, playingBgm, setPlayingBgm}} />
 
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 p-6 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
                           <div className="flex-1">
@@ -1177,6 +1281,18 @@ export default function StudioPage() {
                           onChange={e => setEditedScript(e.target.value)}
                           className="w-full bg-white/[0.03] border border-white/[0.1] focus:border-indigo-500/50 rounded-2xl px-6 py-5 text-white font-mono text-sm leading-relaxed resize-none"
                         />
+                        <div className="flex items-center justify-end mt-4 mb-2">
+                          <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setUseBgMusic(!useBgMusic)}>
+                            <div className="flex flex-col items-end text-right">
+                              <span className="text-[10px] font-black text-white uppercase tracking-widest">Background Music</span>
+                              <span className="text-[8px] text-slate-500 font-bold uppercase tracking-tighter">Auto-mix cinematic track</span>
+                            </div>
+                            <div className={`w-10 h-5 rounded-full relative transition-all duration-300 ${useBgMusic ? 'bg-indigo-600' : 'bg-slate-700'}`}>
+                              <div className={`absolute top-[2px] w-4 h-4 bg-white rounded-full transition-all duration-300 ${useBgMusic ? 'right-1' : 'left-1'}`} />
+                            </div>
+                          </div>
+                        </div>
+                        <BgmSelector {...{useBgMusic, setUseBgMusic, bgmList, selectedBgm, setSelectedBgm, playingBgm, setPlayingBgm}} />
                         <InlineVoiceGenRow
                           voice={voice}
                           onVoiceChange={setVoice}
@@ -1229,6 +1345,22 @@ export default function StudioPage() {
                               </select>
                             </div>
                           </div>
+                        </div>
+
+                        {/* BGM MANAGEMENT */}
+                        <div className="glass-panel-sub rounded-2xl p-6 border-white/[0.05] bg-white/[0.01]">
+                          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                            <div className="flex items-center gap-4 group cursor-pointer w-full" onClick={() => setUseBgMusic(!useBgMusic)}>
+                              <div className={`w-12 h-6 rounded-full relative transition-all duration-300 shrink-0 ${useBgMusic ? 'bg-indigo-600' : 'bg-slate-700'}`}>
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${useBgMusic ? 'right-1' : 'left-1'}`} />
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-[10px] font-black text-white uppercase tracking-widest">Background Music</span>
+                                <span className="text-[9px] text-slate-500 font-bold uppercase tracking-tighter">Auto-mix cinematic background track</span>
+                              </div>
+                            </div>
+                          </div>
+                          <BgmSelector {...{useBgMusic, setUseBgMusic, bgmList, selectedBgm, setSelectedBgm, playingBgm, setPlayingBgm}} />
                         </div>
 
                         <div className="flex flex-col">

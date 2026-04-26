@@ -124,10 +124,14 @@ Always use a bridge: [professional], [calm], [conversational] before [neutral].
 RULE 5 — TAG DENSITY:
 MAX 1 expressive tag per 3 sentences. Emotion comes from word choice, not just tags.
 
-RULE 6 — MOMENTUM:
+RULE 6 — MOMENTUM & PACING:
 Never place "..." immediately after a high-energy tag.
 Let the high-energy sentence finish completely, then pause.
 ✅ RIGHT: [enthusiasm] This is incredible news. ... [analytical] Let me break it down.
+
+CRITICAL PACING INSTRUCTION: Do NOT rush the ending. Write the text in a way that enforces a steady, even pace from the first word to the very last word. Ensure sentence structures in the conclusion are deliberate and grounded.
+
+CRITICAL VOICE CONSISTENCY RULE: To prevent the AI from running out of breath or speeding up in the middle of long paragraphs, you MUST insert deliberate breathing pauses frequently. Use ellipses ("...") between major thoughts or clauses within long paragraphs. This provides a "rest" that resets the speaking tempo and maintains high voice consistency.
 
 ## APPROVED TAGS:
 You can ONLY use these inline emotion tags:

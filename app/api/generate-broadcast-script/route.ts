@@ -199,6 +199,8 @@ Pacing and Spacing:
 - PERIODIC ENERGY RESET: At the start of EVERY new topic, inject [energetic], [enthusiasm], or [determination] to prevent voice energy from fading.
 - EMOTIONAL STABILITY: Use 1-2 dominant emotions per story section. Do not switch tags every sentence.
 - MOMENTUM: Never place "..." immediately after a high-energy tag. Let momentum carry the sentence through, then pause.
+- PACING: Do NOT rush the ending. Write the text in a way that enforces a steady, even conversational pace from start to finish. Ensure closing dialogue is grounded and unhurried.
+- VOICE CONSISTENCY: To prevent the speakers from running out of breath or speeding up mid-thought, insert deliberate breathing pauses frequently. Use ellipses ("...") between major clauses. This provides a "rest" that resets the speaking tempo.
 - VARIED SUMMARIES: Vary section endings: 1st [neutral], 2nd [optimistic], 3rd [professional].
 - TECHNICAL CONTENT: Break long technical sentences into fragments. Use [emphasis] on key numbers.
 - RE-ENTRY: After every "...", you MUST provide a re-entry tag. Never leave a pause without a follow-up energy instruction.

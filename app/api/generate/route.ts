@@ -15,6 +15,8 @@ import {
 } from "@/lib/usage";
 import { VOICE_MAPPING, VOICE_GENDERS } from "@/lib/voices";
 import { uploadToDrive } from "@/lib/google-drive";
+import { normalizeAudioBuffer, mixBackgroundMusic, fixSpeechTempo } from "@/lib/audio-processing";
+import { getRandomBgMusic } from "@/lib/bgm";
 
 // Convert raw PCM from Gemini into a proper WAV file with header
 function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 16): Buffer {
@@ -79,7 +81,7 @@ export async function POST(req: Request) {
     // Reset daily counters if UTC date changed
     resetDailyIfNeeded(user);
 
-    const { script, voice = "Sunidhi" } = await req.json();
+    const { script, voice = "Sunidhi", useBgMusic, selectedBgm } = await req.json();
 
     if (!script?.trim()) {
       return NextResponse.json({ error: "Missing script" }, { status: 400 });
@@ -204,7 +206,29 @@ export async function POST(req: Request) {
     await user.save();
 
     const pcmBuffer = Buffer.from(audioData, "base64");
-    const wavBuffer = pcmToWav(pcmBuffer);
+    let wavBuffer = pcmToWav(pcmBuffer);
+
+    // ── Apply FFmpeg Audio Normalization & Tempo Fix ──────────────────────────
+    try {
+      console.log("[Audio] Fixing tempo to prevent rushing...");
+      wavBuffer = await fixSpeechTempo(wavBuffer);
+
+      console.log("[Audio] Normalizing volume via FFmpeg...");
+      wavBuffer = await normalizeAudioBuffer(wavBuffer);
+      
+      if (useBgMusic) {
+        console.log("[Audio] Mixing Background Music...");
+        const bgmUrl = selectedBgm || await getRandomBgMusic();
+        if (bgmUrl) {
+          wavBuffer = await mixBackgroundMusic(wavBuffer, bgmUrl);
+        } else {
+          console.warn("[Audio] Background music requested but none found.");
+        }
+      }
+    } catch (ffmpegErr) {
+      console.error("[Audio Processing Failed] Continuing with raw audio.", ffmpegErr);
+      // We don't throw here; if normalization/mix fails, we just serve the raw audio
+    }
 
     // ── Google Drive Auto-Backup ────────────────────────────────────────────────
     let driveUploadStatus = "none";

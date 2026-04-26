@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
+import { sanitizeScriptTags, stripSpeakerLabels } from "@/lib/tts-tags";
 import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
@@ -37,9 +38,11 @@ function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 
 // ─── Script Cleaner ───────────────────────────────────────────────────────────
 function cleanScriptForMultiSpeaker(script: string, voice1: string, voice2: string): string {
   const lines: string[] = [];
-  // Updated Regex: Handles [Name: text], [Name-Emotion: text], and simple Name: text
-  // Supports Devanagari and Latin names
-  const pattern = /(?:^|[\r\n])\s*\[?([\w\s\u0900-\u097F]+)(?:-[^:\]]+)?[:\]]\s*([\s\S]*?)(?=\s*[\r\n]\s*\[?[\w\s\u0900-\u097F]+(?:-[^:\]]+)?[:\]]|$)/g;
+
+  // FIXED REGEX: Now handles emotion tags BEFORE the speaker bracket
+  // e.g. [Dev: text] or [Puck-Energetic: text] or [[energetic] Dev: text]
+  // Also handles plain "Name: text" on its own line
+  const pattern = /(?:^|[\r\n])\s*(?:\[[^\]]*\]\s*)*\[?([\w\s\u0900-\u097F]+?)(?:-[^:\]]+)?[:\]]\s*([\s\S]*?)(?=\s*(?:[\r\n]|$)(?:\[[^\]]*\]\s*)*\[?[\w\s\u0900-\u097F]+(?:-[^:\]]+)?[:\]]|\s*$)/g;
 
   let match;
   while ((match = pattern.exec(script)) !== null) {
@@ -48,24 +51,18 @@ function cleanScriptForMultiSpeaker(script: string, voice1: string, voice2: stri
 
     const isV1 = rawName.toLowerCase().includes(voice1.toLowerCase());
     const isV2 = rawName.toLowerCase().includes(voice2.toLowerCase());
-
-    // Priority to exact match or inclusion
-    const speaker = isV1 ? voice1 : (isV2 ? voice2 : null);
-
+    const speaker = isV1 ? voice1 : isV2 ? voice2 : null;
     if (!speaker) continue;
 
-    // Clean up trailing brackets and extra spaces
     text = text.replace(/\]\s*$/, "").trim();
     text = text.replace(/\s{2,}/g, " ").trim();
-
-    if (text) {
-      lines.push(`${speaker}: ${text}`);
-    }
+    if (text) lines.push(`${speaker}: ${text}`);
   }
 
   if (lines.length === 0) {
-    console.warn("[Broadcast Audio] Regex parser produced 0 lines — falling back to basic split");
-    return script.split("\n")
+    console.warn("[Broadcast Audio] Regex produced 0 lines — fallback split");
+    return script
+      .split("\n")
       .filter(l => l.includes(":"))
       .map(l => l.replace(/^\[/, "").replace(/\]$/, "").trim())
       .join("\n");
@@ -142,28 +139,43 @@ export async function POST(req: Request) {
     const geminiVoice2 = VOICE_MAPPING[voice2] || voice2;
 
     const cleanedScript = cleanScriptForMultiSpeaker(script, voice1, voice2);
+    const sanitizedScript = sanitizeScriptTags(cleanedScript);
 
     console.log(`[Broadcast Audio] Generating full broadcast audio without chunking.`);
 
     const callGeminiTTS = async (key: string, fullScript: string) => {
       const ai = new GoogleGenAI({ apiKey: key });
 
-      let systemInstruction = `You are directing a high-energy professional FM radio broadcast. 
-Two RJ hosts are live on air — maintain consistent vocal energy, natural pacing, and distinct character voices throughout.
+      const buildSystemInstruction = (v1: string, v2: string, timeCtx?: any) => {
+        const base = [
+          `BROADCAST DIRECTOR'S BRIEF:`,
+          `This is a LIVE FM radio broadcast with two hosts. Your job is to deliver audio that sounds like a real, high-energy radio show.`,
+          ``,
+          `CHARACTER PROFILES:`,
+          `Host 1 — ${v1}: Energetic, drives the show, confident and punchy delivery.`,
+          `Host 2 — ${v2}: Warm, witty, great at reactions, slightly more measured than ${v1}.`,
+          ``,
+          `CRITICAL ENERGY RULES (MUST FOLLOW):`,
+          `- Both hosts MUST maintain consistent, high vocal energy from the opening to the sign-off. No fading.`,
+          `- At every topic transition, re-inject energy. NEVER let the voice go flat or robotic.`,
+          `- When you see "...", pause naturally (1-2 sec), then RE-ENTER with the SAME or HIGHER energy.`,
+          `- Inline style tags like [energetic], [laughs], [determination] are DELIVERY CUEs. NEVER speak them aloud.`,
+          `- Each speaker must sound DISTINCT and consistent throughout the entire broadcast.`,
+        ];
 
-All inline tags like [enthusiasm] or [laughs] are official Gemini TTS audio direction tags — they control vocal delivery automatically. Never speak them aloud.`;
+        if (timeCtx) {
+          base.push(``, `TIME CONTEXT: It is currently ${timeCtx.period.toUpperCase()} (${timeCtx.timeString}).`);
+          base.push(`Tone should match: ${timeCtx.systemTone}`);
+        }
+
+        return base.join("\n");
+      };
+
+      let systemInstruction = buildSystemInstruction(voice1, voice2);
 
       if (useTimeContext) {
         const timeCtx = getTimeContext(timezoneOffset);
-        systemInstruction = `You are directing a professional FM radio broadcast.
-Current time period: ${timeCtx.period.toUpperCase()}
-
-${timeCtx.systemTone}
-
-Maintain this tone consistently across the entire broadcast.
-All inline tags like [enthusiasm] or [laughs] are official Gemini TTS 
-audio direction tags — they control vocal delivery automatically. 
-Never speak them aloud.`;
+        systemInstruction = buildSystemInstruction(voice1, voice2, timeCtx);
       }
 
       return await withGeminiRetry(() =>
@@ -203,7 +215,7 @@ Never speak them aloud.`;
     while (attempts < maxAttempts) {
       try {
         attempts++;
-        ttsResponse = await callGeminiTTS(activeKey, cleanedScript);
+        ttsResponse = await callGeminiTTS(activeKey, sanitizedScript);
         break; // Success!
       } catch (err: any) {
         console.error(`[Broadcast Audio] Attempt ${attempts} failed:`, err.message);

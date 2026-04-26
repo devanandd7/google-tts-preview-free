@@ -36,13 +36,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
-      <html
-        lang="en"
-        className={`${epilogue.variable} ${spaceGrotesk.variable} ${inter.variable} h-full antialiased`}
-        suppressHydrationWarning
-      >
-        <body className="min-h-full flex flex-col">
+    <html
+      lang="en"
+      className={`${epilogue.variable} ${spaceGrotesk.variable} ${inter.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
+      <body className="min-h-full flex flex-col">
+        <ClerkProvider>
           {/* Razorpay SDK — loaded globally so it is always ready before payment */}
           <Script
             id="razorpay-sdk"
@@ -51,8 +51,8 @@ export default function RootLayout({
           />
           {children}
           <Toaster />
-        </body>
-      </html>
-    </ClerkProvider>
+        </ClerkProvider>
+      </body>
+    </html>
   );
 }

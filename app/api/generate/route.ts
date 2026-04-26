@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
+import { sanitizeScriptTags, stripSpeakerLabels } from "@/lib/tts-tags";
 import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
@@ -37,29 +38,6 @@ function pcmToWav(pcmData: Buffer, sampleRate = 24000, channels = 1, bitDepth = 
   buffer.writeUInt32LE(dataSize, 40);
   pcmData.copy(buffer, 44);
   return buffer;
-}
-
-function chunkText(text: string, maxLen: number = 3000): string[] {
-  const chunks: string[] = [];
-  const regex = /[^.!?\n]+[.!?\n]*/g;
-  const matches = text.match(regex);
-  const sentences = matches && matches.length > 0 ? matches : [text];
-
-  let currentChunk = "";
-  for (const sentence of sentences) {
-    if ((currentChunk + sentence).length > maxLen) {
-      if (currentChunk.trim()) chunks.push(currentChunk.trim());
-      currentChunk = sentence;
-      while (currentChunk.length > maxLen) {
-        chunks.push(currentChunk.substring(0, maxLen).trim());
-        currentChunk = currentChunk.substring(maxLen);
-      }
-    } else {
-      currentChunk += sentence;
-    }
-  }
-  if (currentChunk.trim()) chunks.push(currentChunk.trim());
-  return chunks.length ? chunks : [text];
 }
 
 const ADMIN_EMAILS = ["devanandutkarsh7@gail.com", "devanandutkarsh7@gmail.com"];
@@ -107,6 +85,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing script" }, { status: 400 });
     }
 
+    const maxChars = user.plan === "pro" ? 5000 : 2000;
+    if (script.length > maxChars) {
+      return NextResponse.json({ error: `Character limit exceeded. Your plan allows up to ${maxChars} characters.` }, { status: 400 });
+    }
+
     // ── Quota check (Bypass for Admin) ──────────────────────────────────────────
     if (isAdmin) {
       // Admin has no limits
@@ -137,15 +120,32 @@ export async function POST(req: Request) {
     const userApiKey = user.plan === "pro" && user.ownApiKey ? decrypt(user.ownApiKey) : null;
     const serverApiKey = process.env.GEMINI_API_KEY!;
 
-    const _gender = VOICE_GENDERS[voice] ?? "neutral";
     const geminiVoiceName = VOICE_MAPPING[voice] || voice;
 
-    const attemptTTS = async (key: string, chunkedScript: string) => {
+    const attemptTTS = async (key: string, ttsScript: string) => {
       const ai = new GoogleGenAI({ apiKey: key });
+
+      // RESEARCH-BACKED: Identical, detailed system_instruction on every call
+      // anchors the persona and prevents voice drift in long-form audio.
+      const systemInstruction = [
+        `CHARACTER PROFILE:`,
+        `You are ${voice}, a professional news anchor. Your delivery is confident, clear, and engaging.`,
+        `Age: Late 20s to early 30s. Style: Authoritative yet warm — like a top-rated FM/TV anchor.`,
+        ``,
+        `DIRECTOR'S INSTRUCTIONS:`,
+        `- Maintain IDENTICAL energy from the first word to the last word. No fading.`,
+        `- Treat every sentence as equally important. Do NOT rush the final sections.`,
+        `- Breathe naturally at "..." and paragraph breaks. Do not hold your breath.`,
+        `- Inline tags like [energetic] or [determination] are audio delivery cues. NEVER speak them aloud.`,
+        `- When you see "...", pause naturally for 1-2 seconds, then re-enter with the same or higher energy.`,
+        `- Your voice must sound identical at minute 0 and minute 5. This is a CRITICAL requirement.`,
+      ].join("\n");
+
       return await withGeminiRetry(() =>
-        ai.models.generateContent({
+        (ai as any).models.generateContent({
           model: TTS_AI_MODEL,
-          contents: chunkedScript,
+          system_instruction: systemInstruction,
+          contents: ttsScript,
           config: {
             responseModalities: ["AUDIO"],
             speechConfig: {
@@ -159,53 +159,51 @@ export async function POST(req: Request) {
     };
 
     let activeKey = userApiKey || serverApiKey;
-    const scriptChunks = chunkText(script, 3000);
-    const audioBuffers: Buffer[] = [];
+    let ttsResponse;
 
-    for (const chunk of scriptChunks) {
-      let ttsResponse;
-      try {
-        ttsResponse = await attemptTTS(activeKey, chunk);
-      } catch (err: any) {
-        const msg = err?.message?.toLowerCase() || "";
-        const isKeyError = 
-          err.code === "QUOTA_EXCEEDED" || 
-          err.code === "INVALID_KEY" || 
-          err.code === "OVERLOADED" ||
-          msg.includes("denied access") ||
-          msg.includes("permission_denied") ||
-          msg.includes("api_key_invalid") ||
-          msg.includes("quota") ||
-          msg.includes("exceeded") ||
-          msg.includes("invalid");
+    try {
+      // 1. Sanitize: pause→ellipsis, banned→remapped, unknown→stripped
+      let safeScript = sanitizeScriptTags(script);
+      // 2. Strip speaker labels like [Ananya: ] (shared utility)
+      safeScript = stripSpeakerLabels(safeScript);
 
-        // ONLY fallback to server key if the user is NOT a Pro user with their own key
-        // If they are Pro, they must use their own key.
-        if (activeKey === userApiKey && isKeyError && user.plan !== "pro") {
-          console.warn("[TTS Fallback] User custom key failed. Falling back to server key.");
-          activeKey = serverApiKey;
-          ttsResponse = await attemptTTS(activeKey, chunk);
-        } else {
-          // For Pro users, if their key fails, we throw the error so they can fix it.
-          throw err;
-        }
+      ttsResponse = await attemptTTS(activeKey, safeScript);
+    } catch (err: any) {
+      const msg = err?.message?.toLowerCase() || "";
+      const isKeyError =
+        err.code === "QUOTA_EXCEEDED" ||
+        err.code === "INVALID_KEY" ||
+        err.code === "OVERLOADED" ||
+        msg.includes("denied access") ||
+        msg.includes("permission_denied") ||
+        msg.includes("api_key_invalid") ||
+        msg.includes("quota") ||
+        msg.includes("exceeded") ||
+        msg.includes("invalid");
+
+      if (activeKey === userApiKey && isKeyError && user.plan !== "pro") {
+        console.warn("[TTS Fallback] User custom key failed. Falling back to server key.");
+        activeKey = serverApiKey;
+        const safeScript = stripSpeakerLabels(sanitizeScriptTags(script));
+        ttsResponse = await attemptTTS(activeKey, safeScript);
+      } else {
+        throw err;
       }
+    }
 
-      const audioData = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (!audioData) {
-        return NextResponse.json(
-          { error: "Failed to generate audio — no audio data returned from a chunk" },
-          { status: 500 }
-        );
-      }
-      audioBuffers.push(Buffer.from(audioData, "base64"));
+    const audioData = (ttsResponse as any).candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!audioData) {
+      return NextResponse.json(
+        { error: "Failed to generate audio — no audio data returned" },
+        { status: 500 }
+      );
     }
 
     // ── Record usage (daily + all-time) ──────────────────────────────────────────
     incrementUsage(user, "direct");
     await user.save();
 
-    const pcmBuffer = Buffer.concat(audioBuffers);
+    const pcmBuffer = Buffer.from(audioData, "base64");
     const wavBuffer = pcmToWav(pcmBuffer);
 
     // ── Google Drive Auto-Backup ────────────────────────────────────────────────

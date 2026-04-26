@@ -183,7 +183,7 @@ export default function StudioPage() {
   const [audioLoading, setAudioLoading] = useState(false);
   const [error, setError] = useState("");
   const [audioDurations, setAudioDurations] = useState<Record<string, number>>({});
-  
+
   // Live Session Trackers
   const [sessionTokens, setSessionTokens] = useState(0);
   const [sessionAudioRequests, setSessionAudioRequests] = useState(0);
@@ -200,10 +200,15 @@ export default function StudioPage() {
   const razorpayReady = useRazorpay();
   const { user } = useUser();
 
-  // Load profile on mount and whenever user changes
-  useEffect(() => { 
+  // Load profile on mount
+  useEffect(() => {
     setHasMounted(true);
-    fetchProfile(); 
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchProfile();
+    }
   }, [user]);
 
   const fetchProfile = async () => {
@@ -435,10 +440,10 @@ export default function StudioPage() {
       setEditedScript(data.script);
       setStage("review");
       if (data.tokenUsage) {
-         setSessionTokens(prev => prev + data.tokenUsage);
-         toast.success(`Generated using ${data.tokenUsage.toLocaleString()} tokens`, "Live Token Usage");
+        setSessionTokens(prev => prev + data.tokenUsage);
+        toast.success(`Generated using ${data.tokenUsage.toLocaleString()} tokens`, "Live Token Usage");
       }
-      
+
       if (data.usage) {
         if (mode === "broadcast") {
           setProfile(prev => prev ? { ...prev, broadcastCount: data.usage.broadcastCount, dailyBroadcastCount: data.usage.dailyBroadcastCount ?? prev.dailyBroadcastCount } : null);
@@ -510,22 +515,22 @@ export default function StudioPage() {
         createdAt: new Date(),
       };
       setAudioHistory(prev => [newItem, ...prev]);
-      
+
       // Update our live requests metric (Broadcast audio consumes multiple requests behind the scenes)
-      const requestsMade = mode === "broadcast" ? 2 : 1; 
+      const requestsMade = mode === "broadcast" ? 2 : 1;
       setSessionAudioRequests(prev => prev + requestsMade);
 
       toast.success(mode === "broadcast" ? "Broadcast audio generated successfully!" : `Voice "${voiceLabel}" generated successfully!`, "Audio Ready");
       if (data.usage) {
         if (mode === "broadcast") {
-           setProfile(prev => prev ? { ...prev, broadcastCount: data.usage.broadcastCount, dailyBroadcastCount: data.usage.dailyBroadcastCount ?? prev.dailyBroadcastCount } : null);
-           // Auto-reset so user can create a new broadcast immediately
-           setStage("input");
-           setEditedScript("");
-           setUserIdea("");
-           setError("");
+          setProfile(prev => prev ? { ...prev, broadcastCount: data.usage.broadcastCount, dailyBroadcastCount: data.usage.dailyBroadcastCount ?? prev.dailyBroadcastCount } : null);
+          // Auto-reset so user can create a new broadcast immediately
+          setStage("input");
+          setEditedScript("");
+          setUserIdea("");
+          setError("");
         } else {
-           setProfile(prev => prev ? { ...prev, directTtsCount: data.usage.directTtsCount, dailyDirectTtsCount: data.usage.dailyDirectTtsCount ?? prev.dailyDirectTtsCount } : null);
+          setProfile(prev => prev ? { ...prev, directTtsCount: data.usage.directTtsCount, dailyDirectTtsCount: data.usage.dailyDirectTtsCount ?? prev.dailyDirectTtsCount } : null);
         }
       }
 
@@ -562,11 +567,11 @@ export default function StudioPage() {
         }),
       });
       const data = await res.json();
-      
+
       if (!res.ok) {
         if (data.code === "UPGRADE_REQUIRED") {
-           toast.error(data.error, "Upgrade Required");
-           return;
+          toast.error(data.error, "Upgrade Required");
+          return;
         }
         if (data.code === "QUOTA_EXCEEDED") {
           toast.error(
@@ -580,8 +585,8 @@ export default function StudioPage() {
       }
 
       if (data.tokenUsage) {
-         setSessionTokens(prev => prev + data.tokenUsage);
-         toast.success(`Generated using ${data.tokenUsage.toLocaleString()} tokens`, "Live Token Usage");
+        setSessionTokens(prev => prev + data.tokenUsage);
+        toast.success(`Generated using ${data.tokenUsage.toLocaleString()} tokens`, "Live Token Usage");
       }
 
       const songDesc = musicInstrumental ? "[Instrumental Track]" : "[Vocal Track]";
@@ -592,14 +597,14 @@ export default function StudioPage() {
         audioBase64: data.audioBase64,
         createdAt: new Date(),
       };
-      
+
       setAudioHistory(prev => [newItem, ...prev]);
       setSessionAudioRequests(prev => prev + 1);
 
       toast.success("AI Music generated successfully! Play it from History.", "Track Ready");
       setMusicPrompt("");
       setMusicLyrics("");
-      
+
       if (data.driveUploadStatus === "success") {
         setDriveStatus("success");
       } else if (data.driveUploadStatus === "failed") {
@@ -646,7 +651,7 @@ export default function StudioPage() {
         imageBase64: data.imageBase64,
         createdAt: new Date(),
       };
-      
+
       setAudioHistory(prev => [newItem, ...prev]);
       toast.success("AI Image generated! Check your history.", "Image Ready");
       setImagePrompt("");
@@ -699,13 +704,12 @@ export default function StudioPage() {
   const broadcastCount = profile?.dailyBroadcastCount ?? 0;
   const broadcastReached = !isUnlimited && (broadcastCount >= BROADCAST_LIMIT);
 
-
   const [activeMobileColumn, setActiveMobileColumn] = useState<"vault" | "stage" | "command">("stage");
 
   if (!hasMounted) return null;
 
   return (
-    <div className="h-[100dvh] w-full flex flex-col bg-[#050505] selection:bg-indigo-500/30 overflow-hidden">
+    <div className="h-[100dvh] w-full flex flex-col bg-[#050505] selection:bg-indigo-500/30 overflow-hidden relative">
       {/* --- PREMIUM HEADER --- */}
       <header className="h-20 shrink-0 border-b border-indigo-500/20 bg-[#0a0f1f]/95 backdrop-blur-3xl sticky top-0 z-[100] px-4 md:px-8 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
         <div className="h-full flex items-center justify-between">
@@ -719,17 +723,17 @@ export default function StudioPage() {
           </div>
 
           <div className="hidden xl:flex items-center gap-4">
-             <Link href="/blog" className="text-sm font-black uppercase tracking-widest text-indigo-100/70 hover:text-white transition-all">
-               Blogs
-             </Link>
-             <button onClick={() => setShowSettings(true)} className="px-4 py-2 rounded-lg text-sm font-black uppercase tracking-widest text-indigo-100/70 hover:text-white hover:bg-white/5 transition-all flex items-center gap-2">
-               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-               Settings
-             </button>
+            <Link href="/blog" className="text-sm font-black uppercase tracking-widest text-indigo-100/70 hover:text-white transition-all">
+              Blogs
+            </Link>
+            <button onClick={() => setShowSettings(true)} className="px-4 py-2 rounded-lg text-sm font-black uppercase tracking-widest text-indigo-100/70 hover:text-white hover:bg-white/5 transition-all flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+              Settings
+            </button>
           </div>
 
           <div className="flex items-center gap-3 md:gap-6">
-             {profile && (
+            {profile && (
               <div className="hidden md:flex items-center gap-4">
                 {profile.plan === "pro" ? (
                   <div className="flex items-center gap-2 bg-white/[0.02] border border-white/[0.05] px-3 py-1.5 rounded-2xl">
@@ -765,12 +769,12 @@ export default function StudioPage() {
                 ) : (
                   <div className="flex items-center gap-4">
                     <div className="flex flex-col items-end hidden lg:flex">
-                       <span className="text-[12px] font-bold text-indigo-300/70 uppercase tracking-widest">Free Account</span>
-                       <div className="flex items-center gap-2">
-                         <span className="text-sm font-mono text-white/70">{profile.directTtsCount}/3 TTS</span>
-                         <span className="text-white/20">|</span>
-                         <span className={`text-sm font-mono font-bold ${broadcastCount >= BROADCAST_LIMIT ? 'text-red-400/80' : 'text-pink-400/80'}`}>{Math.min(broadcastCount, BROADCAST_LIMIT)}/{BROADCAST_LIMIT} BC</span>
-                       </div>
+                      <span className="text-[12px] font-bold text-indigo-300/70 uppercase tracking-widest">Free Account</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-mono text-white/70">{profile.directTtsCount}/3 TTS</span>
+                        <span className="text-white/20">|</span>
+                        <span className={`text-sm font-mono font-bold ${broadcastCount >= BROADCAST_LIMIT ? 'text-red-400/80' : 'text-pink-400/80'}`}>{Math.min(broadcastCount, BROADCAST_LIMIT)}/{BROADCAST_LIMIT} BC</span>
+                      </div>
                     </div>
                     {/* Hide upgrade button if they are already pro, but if they are here they aren't pro */}
                     <button onClick={handleUpgrade} className="px-6 py-3 bg-white text-black text-sm font-black rounded-xl hover:bg-indigo-400 hover:text-white transition-all shadow-[0_0_30px_rgba(79,70,229,0.3)] active:scale-95 uppercase tracking-widest">
@@ -795,7 +799,7 @@ export default function StudioPage() {
 
       {/* --- MAIN PRODUCTION LAYOUT --- */}
       <div className="flex-1 flex overflow-hidden relative">
-        
+
         {/* === LEFT COLUMN: MEDIA VAULT (History) === */}
         <aside className={`w-full xl:w-[380px] xl:shrink-0 xl:border-r border-white/[0.05] bg-black/20 flex flex-col transition-all duration-500 absolute inset-0 xl:relative z-40 ${activeMobileColumn === 'vault' ? 'translate-x-0 opacity-100' : '-translate-x-full xl:translate-x-0 opacity-0 xl:opacity-100 pointer-events-none xl:pointer-events-auto'}`}>
           <div className="p-6 border-b border-white/[0.05] flex flex-col gap-4 bg-black/20 backdrop-blur-xl">
@@ -813,14 +817,14 @@ export default function StudioPage() {
 
             {/* TABS: RECENT vs DRIVE */}
             <div className="flex p-1 bg-white/[0.03] border border-white/5 rounded-xl">
-              <button 
+              <button
                 onClick={() => setHistoryTab("recent")}
                 className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${historyTab === 'recent' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 Recent
               </button>
-              <button 
+              <button
                 onClick={() => {
                   setHistoryTab("drive");
                   if (profile?.hasOwnDriveKey || profile?.hasDriveOAuth) fetchDriveFiles();
@@ -871,32 +875,32 @@ export default function StudioPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5">
-                           {item.type !== "image" && audioDurations[item.id] && (
+                          {item.type !== "image" && audioDurations[item.id] && (
                             <span className="text-[10px] font-mono text-indigo-400/80 font-bold">{audioDurations[item.id].toFixed(1)}s</span>
                           )}
                         </div>
                       </div>
 
                       {item.type === "image" ? (
-                         <div className="space-y-3">
-                           <button 
-                             onClick={() => setPreviewImage({ url: item.imageBase64 ? `data:image/jpeg;base64,${item.imageBase64}` : item.imageUrl!, prompt: item.scriptPreview })}
-                             className="relative w-full aspect-square overflow-hidden rounded-xl border border-white/[0.05] hover:border-indigo-500/50 transition-all duration-700 shadow-2xl group/img"
-                           >
-                             <img 
-                                src={item.imageBase64 ? `data:image/jpeg;base64,${item.imageBase64}` : item.imageUrl} 
-                                alt="AI Asset" 
-                                className="w-full h-full object-cover grayscale-[0.5] group-hover/img:grayscale-0 transition-all duration-700" 
-                             />
-                             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
-                                <span className="text-[10px] font-black text-white border border-white/20 px-3 py-1.5 rounded-full backdrop-blur-xl uppercase tracking-widest">Enlarge Asset</span>
-                             </div>
-                           </button>
-                           <p className="text-[10px] text-slate-500 font-medium leading-relaxed line-clamp-2 italic px-1 italic">"{item.scriptPreview}"</p>
-                         </div>
+                        <div className="space-y-3">
+                          <button
+                            onClick={() => setPreviewImage({ url: item.imageBase64 ? `data:image/jpeg;base64,${item.imageBase64}` : item.imageUrl!, prompt: item.scriptPreview })}
+                            className="relative w-full aspect-square overflow-hidden rounded-xl border border-white/[0.05] hover:border-indigo-500/50 transition-all duration-700 shadow-2xl group/img"
+                          >
+                            <img
+                              src={item.imageBase64 ? `data:image/jpeg;base64,${item.imageBase64}` : item.imageUrl}
+                              alt="AI Asset"
+                              className="w-full h-full object-cover grayscale-[0.5] group-hover/img:grayscale-0 transition-all duration-700"
+                            />
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+                              <span className="text-[10px] font-black text-white border border-white/20 px-3 py-1.5 rounded-full backdrop-blur-xl uppercase tracking-widest">Enlarge Asset</span>
+                            </div>
+                          </button>
+                          <p className="text-[10px] text-slate-500 font-medium leading-relaxed line-clamp-2 italic px-1 italic">"{item.scriptPreview}"</p>
+                        </div>
                       ) : (
                         <div className="space-y-4">
-                           <audio
+                          <audio
                             ref={el => { audioRefs.current[item.id] = el; }}
                             src={`data:audio/wav;base64,${item.audioBase64}`}
                             onEnded={() => handleAudioEnded(item.id)}
@@ -951,14 +955,14 @@ export default function StudioPage() {
                     <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Scanning Drive Forge...</p>
                   </div>
                 )}
-                
+
                 {!driveLoading && !driveFolderExists && (
                   <div className="text-center py-12 px-6 bg-amber-500/5 border border-amber-500/10 rounded-2xl space-y-4">
                     <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center mx-auto">
                       <svg className="w-5 h-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                     </div>
                     <p className="text-amber-200/70 text-[10px] font-black uppercase tracking-widest leading-relaxed">Backup folder not found on your Google Drive.</p>
-                    <button 
+                    <button
                       onClick={handleCreateFolderFromVault}
                       className="w-full py-3 bg-amber-600 hover:bg-amber-500 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-amber-900/20"
                     >
@@ -977,15 +981,15 @@ export default function StudioPage() {
                 )}
 
                 {!driveLoading && driveFiles.map((file: any) => (
-                  <a 
-                    key={file.id} 
-                    href={file.webViewLink} 
-                    target="_blank" 
+                  <a
+                    key={file.id}
+                    href={file.webViewLink}
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-4 p-3 bg-white/[0.03] border border-white/[0.05] rounded-xl hover:bg-white/[0.06] hover:border-indigo-500/30 transition-all group"
                   >
                     <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
-                       <svg className="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                      <svg className="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-[11px] text-white font-black truncate group-hover:text-indigo-400 transition-colors">{file.name}</p>
@@ -1009,11 +1013,11 @@ export default function StudioPage() {
           <div className="shrink-0 p-4 md:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-6 z-10">
             <div className="flex items-center p-1.5 gap-1 bg-white/[0.02] border border-white/[0.05] rounded-2xl w-full lg:w-fit flex-wrap md:flex-nowrap">
               {[
-                { id: 'direct',    label: 'Direct',    proOnly: false, icon: 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z' },
-                { id: 'ai',        label: 'Scripts',   proOnly: false, icon: 'M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z' },
-                { id: 'broadcast', label: 'Broadcast', proOnly: true,  icon: 'M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.829 1.58-1.936a4.5 4.5 0 001.31-.433m-1.5 2.56a12.12 12.12 0 01-3 0m4.5-2.56V15.75' },
-                { id: 'music',     label: 'Music',     proOnly: true,  icon: 'M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3' },
-                { id: 'image',     label: 'Image',     proOnly: true,  icon: 'M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z' },
+                { id: 'direct', label: 'Direct', proOnly: false, icon: 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z' },
+                { id: 'ai', label: 'Scripts', proOnly: false, icon: 'M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z' },
+                { id: 'broadcast', label: 'Broadcast', proOnly: true, icon: 'M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.829 1.58-1.936a4.5 4.5 0 001.31-.433m-1.5 2.56a12.12 12.12 0 01-3 0m4.5-2.56V15.75' },
+                { id: 'music', label: 'Music', proOnly: true, icon: 'M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3' },
+                { id: 'image', label: 'Image', proOnly: true, icon: 'M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z' },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -1024,13 +1028,12 @@ export default function StudioPage() {
                     }
                     handleModeSwitch(tab.id as Mode);
                   }}
-                  className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2.5 md:px-5 md:py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-300 relative ${
-                    mode === tab.id
+                  className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2.5 md:px-5 md:py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-300 relative ${mode === tab.id
                       ? 'bg-indigo-600 text-white shadow-[0_10px_20px_-5px_rgba(79,70,229,0.5)] z-20'
                       : tab.proOnly && profile?.plan !== 'pro'
                         ? 'text-slate-600 hover:text-slate-500 cursor-pointer'
                         : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
-                  }`}
+                    }`}
                 >
                   <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d={tab.icon} />
@@ -1045,35 +1048,21 @@ export default function StudioPage() {
               ))}
             </div>
 
-            {mode !== 'image' && mode !== 'music' && (
-              <div className="flex items-center gap-3 bg-white/[0.02] border border-white/[0.05] p-1 rounded-2xl w-fit">
-                <button
-                  onClick={() => handleLengthSwitch("short")}
-                  className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${lengthMode === "short" ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`}
-                >Standard</button>
-                <button
-                  onClick={() => handleLengthSwitch("long")}
-                  className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${lengthMode === "long" ? 'bg-indigo-600 text-white shadow-[0_0_20px_rgba(79,70,229,0.3)]' : 'text-slate-500 hover:text-slate-300'}`}
-                >
-                  Long Form
-                  {profile?.plan !== "pro" && <svg className="w-3 h-3 opacity-60 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C9.243 2 7 4.243 7 7v3H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V12a2 2 0 00-2-2h-1V7c0-2.757-2.243-5-5-5zM9 7c0-1.654 1.346-3 3-3s3 1.346 3 3v3H9V7z" /></svg>}
-                </button>
-              </div>
-            )}
+            {/* Mode selection remains, but length toggle is removed */}
           </div>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar px-4 md:px-6 pb-24 xl:pb-10">
             <div className="max-w-4xl mx-auto space-y-10">
-              
+
               {/* STAGE HEADER */}
               <div className="mt-4">
-                 <h1 className="text-3xl md:text-5xl font-black text-white tracking-tighter uppercase leading-none">
-                   {mode === 'direct' ? 'GenBox Forge' : mode === 'ai' ? 'Script Architect' : mode === 'broadcast' ? 'Broadcast Suite' : mode === 'music' ? 'Sonic Composer' : 'Visual Engine'}
-                 </h1>
-                 <p className="text-slate-500 mt-2 text-xs md:text-sm font-bold uppercase tracking-widest flex items-center gap-2">
-                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                   System Online • Ready for Production
-                 </p>
+                <h1 className="text-3xl md:text-5xl font-black text-white tracking-tighter uppercase leading-none">
+                  {mode === 'direct' ? 'GenBox Forge' : mode === 'ai' ? 'Script Architect' : mode === 'broadcast' ? 'Broadcast Suite' : mode === 'music' ? 'Sonic Composer' : 'Visual Engine'}
+                </h1>
+                <p className="text-slate-500 mt-2 text-xs md:text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  System Online • Ready for Production
+                </p>
               </div>
 
               {/* --- DYNAMIC WORKSPACE CONTENT --- */}
@@ -1085,13 +1074,13 @@ export default function StudioPage() {
 
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                       <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Input Script</label>
-                       <span className={`text-[10px] font-mono font-bold ${directScript.length >= (lengthMode === "short" ? 2000 : 9000) ? 'text-red-500' : 'text-indigo-400'}`}>
-                         {directScript.length.toLocaleString()} / {(lengthMode === "short" ? 2000 : 9000).toLocaleString()}
-                       </span>
+                      <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Input Script</label>
+                      <span className={`text-[10px] font-mono font-bold ${directScript.length >= (profile?.plan === "pro" ? 5000 : 2000) ? 'text-red-500' : 'text-indigo-400'}`}>
+                        {directScript.length.toLocaleString()} / {(profile?.plan === "pro" ? 5000 : 2000).toLocaleString()}
+                      </span>
                     </div>
                     <div className="relative group">
-                       <textarea
+                      <textarea
                         rows={10}
                         value={directScript}
                         onChange={e => setDirectScript(e.target.value)}
@@ -1109,7 +1098,7 @@ export default function StudioPage() {
                     onVoiceChange={setVoice}
                     onGenerate={handleGenerateAudio}
                     loading={audioLoading}
-                    disabled={!directScript.trim()}
+                    disabled={!directScript.trim() || directScript.length > (profile?.plan === "pro" ? 5000 : 2000)}
                     accentClass="from-indigo-600 to-indigo-500 hover:scale-[1.02]"
                     isPro={profile?.plan === 'pro' || Boolean(profile?.isAdmin)}
                     language={language}
@@ -1120,349 +1109,346 @@ export default function StudioPage() {
 
               {mode === "ai" && (
                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                   {/* Prompt Area */}
-                   <div className="glass-panel rounded-3xl p-6 md:p-8 border-white/[0.05]">
-                      <div className="flex items-center justify-between mb-6">
-                         <div className="flex flex-col">
-                            <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Creative Direction</span>
-                            <span className="text-xs text-slate-500 font-bold mt-1">Pick a theme or describe your vision</span>
-                         </div>
-                         <LanguageToggle language={language} onChange={handleLanguageChange} />
+                  {/* Prompt Area */}
+                  <div className="glass-panel rounded-3xl p-6 md:p-8 border-white/[0.05]">
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex flex-col">
+                        <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Creative Direction</span>
+                        <span className="text-xs text-slate-500 font-bold mt-1">Pick a theme or describe your vision</span>
                       </div>
+                      <LanguageToggle language={language} onChange={handleLanguageChange} />
+                    </div>
 
-                      <div className="flex flex-wrap gap-2 mb-8">
-                        {SAMPLE_PROMPTS.map(sp => (
-                          <button
-                            key={sp.label}
-                            onClick={() => { setUserIdea(sp.prompt); if(stage === 'review') setStage('input'); }}
-                            className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border ${userIdea === sp.prompt ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-white/5 border-white/5 text-slate-400 hover:text-white hover:bg-white/10'}`}
-                          >
-                            {sp.label}
-                          </button>
-                        ))}
-                      </div>
+                    <div className="flex flex-wrap gap-2 mb-8">
+                      {SAMPLE_PROMPTS.map(sp => (
+                        <button
+                          key={sp.label}
+                          onClick={() => { setUserIdea(sp.prompt); if (stage === 'review') setStage('input'); }}
+                          className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border ${userIdea === sp.prompt ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-white/5 border-white/5 text-slate-400 hover:text-white hover:bg-white/10'}`}
+                        >
+                          {sp.label}
+                        </button>
+                      ))}
+                    </div>
 
-                      {stage === 'input' ? (
-                        <div className="space-y-6">
-                           <textarea
-                            rows={6}
-                            value={userIdea}
-                            onChange={e => setUserIdea(e.target.value)}
-                            placeholder="Describe the mood, tone, and story..."
-                            className="w-full bg-white/[0.02] border border-white/[0.08] focus:border-indigo-500/50 rounded-2xl px-6 py-5 text-white outline-none transition-all text-sm leading-relaxed resize-none"
-                          />
-                          
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 p-6 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
-                             <div className="flex-1">
-                                <div className="flex items-center justify-between mb-4">
-                                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Production Length</span>
-                                   <span className="text-xs font-mono font-bold text-indigo-400">{scriptDuration} MIN</span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min="1"
-                                  max={lengthMode === "short" ? "2" : "10"}
-                                  value={scriptDuration}
-                                  onChange={e => setScriptDuration(parseInt(e.target.value))}
-                                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                                />
-                             </div>
-                             <button
-                                onClick={() => handleGenerateScript()}
-                                disabled={loading || !userIdea.trim()}
-                                className="h-14 px-10 bg-white text-black font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl hover:bg-indigo-500 hover:text-white transition-all shadow-xl disabled:opacity-30 flex items-center gap-3 shrink-0"
-                              >
-                                {loading ? <Spinner /> : 'Build Master Script'}
-                              </button>
+                    {stage === 'input' ? (
+                      <div className="space-y-6">
+                        <textarea
+                          rows={6}
+                          value={userIdea}
+                          onChange={e => setUserIdea(e.target.value)}
+                          placeholder="Describe the mood, tone, and story..."
+                          className="w-full bg-white/[0.02] border border-white/[0.08] focus:border-indigo-500/50 rounded-2xl px-6 py-5 text-white outline-none transition-all text-sm leading-relaxed resize-none"
+                        />
+
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 p-6 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between mb-4">
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Production Length</span>
+                              <span className="text-xs font-mono font-bold text-indigo-400">{scriptDuration} MIN</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="1"
+                              max={profile?.plan === "pro" ? "5" : "2"}
+                              value={scriptDuration}
+                              onChange={e => setScriptDuration(parseInt(e.target.value))}
+                              className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                            />
                           </div>
+                          <button
+                            onClick={() => handleGenerateScript()}
+                            disabled={loading || !userIdea.trim()}
+                            className="h-14 px-10 bg-white text-black font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl hover:bg-indigo-500 hover:text-white transition-all shadow-xl disabled:opacity-30 flex items-center gap-3 shrink-0"
+                          >
+                            {loading ? <Spinner /> : 'Build Master Script'}
+                          </button>
                         </div>
-                      ) : (
-                        <div className="space-y-6 animate-in zoom-in-95 duration-500">
-                           <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em]">Generated Script Output</span>
-                              <button onClick={() => setStage('input')} className="text-[10px] font-black text-slate-500 hover:text-white uppercase tracking-widest transition-colors">← Back to Idea</button>
-                           </div>
-                           <textarea
-                            rows={16}
-                            value={editedScript}
-                            onChange={e => setEditedScript(e.target.value)}
-                            className="w-full bg-white/[0.03] border border-white/[0.1] focus:border-indigo-500/50 rounded-2xl px-6 py-5 text-white font-mono text-sm leading-relaxed resize-none"
-                          />
-                          <InlineVoiceGenRow
-                            voice={voice}
-                            onVoiceChange={setVoice}
-                            onGenerate={handleGenerateAudio}
-                            loading={audioLoading}
-                            disabled={!editedScript.trim()}
-                            accentClass="from-emerald-600 to-emerald-500 shadow-emerald-500/20"
-                            isPro={profile?.plan === 'pro' || Boolean(profile?.isAdmin)}
-                            language={language}
-                            driveStatus={driveStatus}
-                          />
+                      </div>
+                    ) : (
+                      <div className="space-y-6 animate-in zoom-in-95 duration-500">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em]">Generated Script Output</span>
+                          <button onClick={() => setStage('input')} className="text-[10px] font-black text-slate-500 hover:text-white uppercase tracking-widest transition-colors">← Back to Idea</button>
                         </div>
-                      )}
-                   </div>
+                        <textarea
+                          rows={16}
+                          value={editedScript}
+                          onChange={e => setEditedScript(e.target.value)}
+                          className="w-full bg-white/[0.03] border border-white/[0.1] focus:border-indigo-500/50 rounded-2xl px-6 py-5 text-white font-mono text-sm leading-relaxed resize-none"
+                        />
+                        <InlineVoiceGenRow
+                          voice={voice}
+                          onVoiceChange={setVoice}
+                          onGenerate={handleGenerateAudio}
+                          loading={audioLoading}
+                          disabled={!editedScript.trim()}
+                          accentClass="from-emerald-600 to-emerald-500 shadow-emerald-500/20"
+                          isPro={profile?.plan === 'pro' || Boolean(profile?.isAdmin)}
+                          language={language}
+                          driveStatus={driveStatus}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
               {mode === "broadcast" && (
                 <div className="space-y-8 relative animate-in fade-in duration-700">
-                   {profile?.plan !== "pro" && <ProGateOverlay onUpgrade={handleUpgrade} feature="Broadcast" />}
-                   
-                   <div className="glass-panel rounded-3xl p-6 md:p-8 border-white/[0.05]">
-                      {stage === 'input' ? (
-                        <div className="space-y-8">
-                           {/* TIME-BASED ENERGY MANAGEMENT */}
-                           <div className="glass-panel-sub rounded-2xl p-6 border-white/[0.05] bg-white/[0.01]">
-                              <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                                 <div className="flex items-center gap-4 group cursor-pointer" onClick={() => setUseTimeContext(!useTimeContext)}>
-                                    <div className={`w-12 h-6 rounded-full relative transition-all duration-300 ${useTimeContext ? 'bg-pink-600' : 'bg-slate-700'}`}>
-                                       <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${useTimeContext ? 'right-1' : 'left-1'}`} />
-                                    </div>
-                                    <div className="flex flex-col">
-                                       <span className="text-[10px] font-black text-white uppercase tracking-widest">Time-Aware Energy</span>
-                                       <span className="text-[9px] text-slate-500 font-bold uppercase tracking-tighter">Adjust mood & tone by time of day</span>
-                                    </div>
-                                 </div>
+                  {profile?.plan !== "pro" && <ProGateOverlay onUpgrade={handleUpgrade} feature="Broadcast" />}
 
-                                 <div className={`flex items-center gap-4 transition-all duration-500 ${useTimeContext ? 'opacity-100' : 'opacity-30 pointer-events-none grayscale'}`}>
-                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Select Timezone</span>
-                                    <select 
-                                       value={timezoneOffset}
-                                       onChange={(e) => setTimezoneOffset(Number(e.target.value))}
-                                       className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-bold text-pink-400 outline-none focus:border-pink-500/50 transition-all uppercase tracking-widest"
-                                    >
-                                       <option value={330}>IST (UTC +5:30)</option>
-                                       <option value={0}>GMT (UTC +0)</option>
-                                       <option value={-300}>EST (UTC -5:00)</option>
-                                       <option value={-480}>PST (UTC -8:00)</option>
-                                       <option value={540}>JST (UTC +9:00)</option>
-                                    </select>
-                                 </div>
+                  <div className="glass-panel rounded-3xl p-6 md:p-8 border-white/[0.05]">
+                    {stage === 'input' ? (
+                      <div className="space-y-8">
+                        {/* TIME-BASED ENERGY MANAGEMENT */}
+                        <div className="glass-panel-sub rounded-2xl p-6 border-white/[0.05] bg-white/[0.01]">
+                          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                            <div className="flex items-center gap-4 group cursor-pointer" onClick={() => setUseTimeContext(!useTimeContext)}>
+                              <div className={`w-12 h-6 rounded-full relative transition-all duration-300 ${useTimeContext ? 'bg-pink-600' : 'bg-slate-700'}`}>
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${useTimeContext ? 'right-1' : 'left-1'}`} />
                               </div>
-                           </div>
+                              <div className="flex flex-col">
+                                <span className="text-[10px] font-black text-white uppercase tracking-widest">Time-Aware Energy</span>
+                                <span className="text-[9px] text-slate-500 font-bold uppercase tracking-tighter">Adjust mood & tone by time of day</span>
+                              </div>
+                            </div>
 
-                           <div className="flex flex-col">
-                              <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Broadcast Concept</span>
-                              <textarea
-                                rows={4}
-                                value={userIdea}
-                                onChange={e => setUserIdea(e.target.value)}
-                                placeholder="Describe the debate, interview, or talk show theme..."
-                                className="mt-4 w-full bg-white/[0.02] border border-white/[0.08] focus:border-pink-500/50 rounded-2xl px-6 py-5 text-white outline-none transition-all text-sm leading-relaxed resize-none"
-                              />
-                           </div>
-
-                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                              <div className="space-y-3">
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Lead Moderator</label>
-                                <VoiceSelector voice={voice1} onChange={setVoice1} />
-                              </div>
-                              <div className="space-y-3">
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Invited Guest</label>
-                                <VoiceSelector voice={voice2} onChange={setVoice2} />
-                              </div>
-                           </div>
-
-                           <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/[0.05] flex flex-col md:flex-row items-center justify-between gap-6">
-                              <div className="flex-1 w-full">
-                                <div className="flex items-center justify-between mb-4">
-                                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Session Length</span>
-                                   <span className="text-xs font-mono font-bold text-pink-400">{scriptDuration} MIN</span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min="1"
-                                  max={lengthMode === "short" ? "2" : "5"}
-                                  value={scriptDuration}
-                                  onChange={e => setScriptDuration(parseInt(e.target.value))}
-                                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-pink-500"
-                                />
-                              </div>
-                              <div className="flex flex-col items-end gap-1.5 shrink-0">
-                                <button
-                                  onClick={() => handleGenerateScript()}
-                                 disabled={loading || !userIdea.trim() || voice1 === voice2 || (!isUnlimited && broadcastReached)}
-                                  className={`w-full md:w-auto h-14 px-10 font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-xl shadow-pink-600/20
-                                    ${broadcastReached
-                                      ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
-                                      : 'bg-pink-600 text-white hover:bg-pink-500 active:scale-95 disabled:opacity-30'}`}
-                                >
-                                  {loading ? <Spinner /> : (isUnlimited ? 'Design Dialogue' : (broadcastReached ? 'Limit Reached' : 'Design Dialogue'))}
-                                </button>
-                                <span className={`text-[10px] font-mono font-bold ${!isUnlimited && broadcastCount >= BROADCAST_LIMIT ? 'text-red-400' : 'text-slate-600'}`}>
-                                  {isUnlimited ? 'UNLIMITED PRODUCTION' : `${Math.min(broadcastCount, BROADCAST_LIMIT)}/${BROADCAST_LIMIT} broadcasts used`}
-                                </span>
-                              </div>
-                           </div>
+                            <div className={`flex items-center gap-4 transition-all duration-500 ${useTimeContext ? 'opacity-100' : 'opacity-30 pointer-events-none grayscale'}`}>
+                              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Select Timezone</span>
+                              <select
+                                value={timezoneOffset}
+                                onChange={(e) => setTimezoneOffset(Number(e.target.value))}
+                                className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-bold text-pink-400 outline-none focus:border-pink-500/50 transition-all uppercase tracking-widest"
+                              >
+                                <option value={330}>IST (UTC +5:30)</option>
+                                <option value={0}>GMT (UTC +0)</option>
+                                <option value={-300}>EST (UTC -5:00)</option>
+                                <option value={-480}>PST (UTC -8:00)</option>
+                                <option value={540}>JST (UTC +9:00)</option>
+                              </select>
+                            </div>
+                          </div>
                         </div>
-                      ) : (
-                        <div className="space-y-6">
-                           <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-black text-pink-400 uppercase tracking-[0.2em]">Dialogue Production Script</span>
-                              <div className="flex items-center gap-3">
-                                <span className={`text-[10px] font-mono font-bold ${broadcastCount >= BROADCAST_LIMIT ? 'text-red-400' : 'text-pink-400/70'}`}>
-                                  {Math.min(broadcastCount, BROADCAST_LIMIT)}/{BROADCAST_LIMIT} used
-                                </span>
-                                <button 
-                                  onClick={() => { setStage('input'); setEditedScript(''); setUserIdea(''); setError(''); }}
-                                  className="text-[10px] font-black text-slate-500 hover:text-white uppercase tracking-widest transition-colors border border-white/10 hover:border-white/30 px-3 py-1.5 rounded-lg"
-                                >
-                                  ✕ Clear &amp; Restart
-                                </button>
-                              </div>
-                           </div>
-                           <textarea
-                            rows={16}
-                            value={editedScript}
-                            onChange={e => setEditedScript(e.target.value)}
-                            className="w-full bg-white/[0.03] border border-white/[0.1] focus:border-pink-500/50 rounded-2xl px-6 py-5 text-white font-mono text-sm leading-relaxed resize-none"
+
+                        <div className="flex flex-col">
+                          <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Broadcast Concept</span>
+                          <textarea
+                            rows={4}
+                            value={userIdea}
+                            onChange={e => setUserIdea(e.target.value)}
+                            placeholder="Describe the debate, interview, or talk show theme..."
+                            className="mt-4 w-full bg-white/[0.02] border border-white/[0.08] focus:border-pink-500/50 rounded-2xl px-6 py-5 text-white outline-none transition-all text-sm leading-relaxed resize-none"
                           />
-                          <div className="flex gap-3">
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Lead Moderator</label>
+                            <VoiceSelector voice={voice1} onChange={setVoice1} />
+                          </div>
+                          <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Invited Guest</label>
+                            <VoiceSelector voice={voice2} onChange={setVoice2} />
+                          </div>
+                        </div>
+
+                        <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/[0.05] flex flex-col md:flex-row items-center justify-between gap-6">
+                          <div className="flex-1 w-full">
+                            <div className="flex items-center justify-between mb-4">
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Session Length</span>
+                              <span className="text-xs font-mono font-bold text-pink-400">{scriptDuration} MIN</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="1"
+                              max={profile?.plan === "pro" ? "5" : "2"}
+                              value={scriptDuration}
+                              onChange={e => setScriptDuration(parseInt(e.target.value))}
+                              className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-pink-500"
+                            />
+                          </div>
+                          <div className="flex flex-col items-end gap-1.5 shrink-0">
                             <button
                               onClick={() => handleGenerateScript()}
-                              disabled={loading || !userIdea.trim() || voice1 === voice2 || broadcastReached}
-                              className="h-14 px-6 font-black text-[11px] uppercase tracking-widest rounded-2xl transition-all border border-pink-500/40 text-pink-400 hover:bg-pink-500/10 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2 shrink-0"
+                              disabled={loading || !userIdea.trim() || voice1 === voice2 || (!isUnlimited && broadcastReached)}
+                              className={`w-full md:w-auto h-14 px-10 font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-xl shadow-pink-600/20
+                                    ${broadcastReached
+                                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
+                                  : 'bg-pink-600 text-white hover:bg-pink-500 active:scale-95 disabled:opacity-30'}`}
                             >
-                              {loading ? <Spinner /> : '↻ New Script'}
+                              {loading ? <Spinner /> : (isUnlimited ? 'Design Dialogue' : (broadcastReached ? 'Limit Reached' : 'Design Dialogue'))}
                             </button>
+                            <span className={`text-[10px] font-mono font-bold ${!isUnlimited && broadcastCount >= BROADCAST_LIMIT ? 'text-red-400' : 'text-slate-600'}`}>
+                              {isUnlimited ? 'UNLIMITED PRODUCTION' : `${Math.min(broadcastCount, BROADCAST_LIMIT)}/${BROADCAST_LIMIT} broadcasts used`}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black text-pink-400 uppercase tracking-[0.2em]">Dialogue Production Script</span>
+                          <div className="flex items-center gap-3">
+                            <span className={`text-[10px] font-mono font-bold ${broadcastCount >= BROADCAST_LIMIT ? 'text-red-400' : 'text-pink-400/70'}`}>
+                              {Math.min(broadcastCount, BROADCAST_LIMIT)}/{BROADCAST_LIMIT} used
+                            </span>
                             <button
-                              onClick={handleGenerateAudio}
-                              disabled={audioLoading || !editedScript.trim() || (!isUnlimited && broadcastReached)}
-                              className={`flex-1 h-14 font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-pink-600/20 flex items-center justify-center gap-3 relative
-                                ${(!isUnlimited && broadcastReached) 
-                                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50' 
-                                  : 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white active:scale-95 disabled:opacity-30'}`}
+                              onClick={() => { setStage('input'); setEditedScript(''); setUserIdea(''); setError(''); }}
+                              className="text-[10px] font-black text-slate-500 hover:text-white uppercase tracking-widest transition-colors border border-white/10 hover:border-white/30 px-3 py-1.5 rounded-lg"
                             >
-                              {audioLoading ? <Spinner /> : (
-                                <div className="flex flex-col items-center gap-0.5">
-                                   {driveStatus && driveStatus !== 'idle' && (
-                                     <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest border backdrop-blur-md transition-all duration-500 flex items-center gap-1 ${
-                                       driveStatus === 'processing' ? 'bg-pink-500/20 text-pink-400 border-pink-500/30' :
-                                       driveStatus === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                                       'bg-rose-500/20 text-rose-400 border-rose-500/30'
-                                     }`}>
-                                       <div className={`w-1 h-1 rounded-full ${driveStatus === 'processing' ? 'bg-pink-400 animate-pulse' : driveStatus === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-                                       {driveStatus === 'processing' ? 'Syncing...' : driveStatus === 'success' ? 'Backed Up' : 'Sync Fail'}
-                                     </div>
-                                   )}
-                                   <span>{isUnlimited ? 'Produce Broadcast Master' : (broadcastReached ? `Limit Reached (${BROADCAST_LIMIT}/${BROADCAST_LIMIT})` : 'Produce Broadcast Master')}</span>
-                                </div>
-                              )}
+                              ✕ Clear &amp; Restart
                             </button>
                           </div>
                         </div>
-                      )}
-                   </div>
+                        <textarea
+                          rows={16}
+                          value={editedScript}
+                          onChange={e => setEditedScript(e.target.value)}
+                          className="w-full bg-white/[0.03] border border-white/[0.1] focus:border-pink-500/50 rounded-2xl px-6 py-5 text-white font-mono text-sm leading-relaxed resize-none"
+                        />
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => handleGenerateScript()}
+                            disabled={loading || !userIdea.trim() || voice1 === voice2 || broadcastReached}
+                            className="h-14 px-6 font-black text-[11px] uppercase tracking-widest rounded-2xl transition-all border border-pink-500/40 text-pink-400 hover:bg-pink-500/10 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2 shrink-0"
+                          >
+                            {loading ? <Spinner /> : '↻ New Script'}
+                          </button>
+                          <button
+                            onClick={handleGenerateAudio}
+                            disabled={audioLoading || !editedScript.trim() || (!isUnlimited && broadcastReached)}
+                            className={`flex-1 h-14 font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-pink-600/20 flex items-center justify-center gap-3 relative
+                                ${(!isUnlimited && broadcastReached)
+                                ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
+                                : 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white active:scale-95 disabled:opacity-30'}`}
+                          >
+                            {audioLoading ? <Spinner /> : (
+                              <div className="flex flex-col items-center gap-0.5">
+                                {driveStatus && driveStatus !== 'idle' && (
+                                  <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest border backdrop-blur-md transition-all duration-500 flex items-center gap-1 ${driveStatus === 'processing' ? 'bg-pink-500/20 text-pink-400 border-pink-500/30' :
+                                      driveStatus === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                                        'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                                    }`}>
+                                    <div className={`w-1 h-1 rounded-full ${driveStatus === 'processing' ? 'bg-pink-400 animate-pulse' : driveStatus === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                                    {driveStatus === 'processing' ? 'Syncing...' : driveStatus === 'success' ? 'Backed Up' : 'Sync Fail'}
+                                  </div>
+                                )}
+                                <span>{isUnlimited ? 'Produce Broadcast Master' : (broadcastReached ? `Limit Reached (${BROADCAST_LIMIT}/${BROADCAST_LIMIT})` : 'Produce Broadcast Master')}</span>
+                              </div>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
               {mode === "music" && (
                 <div className="space-y-8 animate-in fade-in duration-700">
-                   <div className="glass-panel rounded-3xl p-6 md:p-8 border-white/[0.05]">
-                      <div className="flex flex-col mb-6">
-                         <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Music Composition</span>
-                         <span className="text-xs text-slate-500 font-bold mt-1">Compose high-fidelity AI music with Lyria 3</span>
+                  <div className="glass-panel rounded-3xl p-6 md:p-8 border-white/[0.05]">
+                    <div className="flex flex-col mb-6">
+                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Music Composition</span>
+                      <span className="text-xs text-slate-500 font-bold mt-1">Compose high-fidelity AI music with Lyria 3</span>
+                    </div>
+                    <div className="space-y-6">
+                      <div className="space-y-3">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Melody & Mood Prompt</label>
+                        <textarea
+                          rows={3}
+                          value={musicPrompt}
+                          onChange={e => setMusicPrompt(e.target.value)}
+                          placeholder="e.g., A lo-fi hip hop track with a chill rainy vibe..."
+                          className="w-full bg-white/[0.02] border border-white/[0.08] focus:border-emerald-500/50 rounded-2xl px-6 py-4 text-white outline-none transition-all text-sm leading-relaxed resize-none"
+                        />
                       </div>
-                      <div className="space-y-6">
-                        <div className="space-y-3">
-                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Melody & Mood Prompt</label>
-                          <textarea
-                            rows={3}
-                            value={musicPrompt}
-                            onChange={e => setMusicPrompt(e.target.value)}
-                            placeholder="e.g., A lo-fi hip hop track with a chill rainy vibe..."
-                            className="w-full bg-white/[0.02] border border-white/[0.08] focus:border-emerald-500/50 rounded-2xl px-6 py-4 text-white outline-none transition-all text-sm leading-relaxed resize-none"
-                          />
-                        </div>
-                        <div className="space-y-3">
-                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Lyrics (Optional)</label>
-                          <textarea
-                            rows={3}
-                            value={musicLyrics}
-                            onChange={e => setMusicLyrics(e.target.value)}
-                            placeholder="Enter lyrics for the AI to sing..."
-                            className="w-full bg-white/[0.02] border border-white/[0.08] focus:border-emerald-500/50 rounded-2xl px-6 py-4 text-white outline-none transition-all text-sm leading-relaxed resize-none"
-                          />
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.05] flex items-center justify-between">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Duration</span>
-                            <div className="flex bg-black/40 p-1 rounded-xl gap-1">
-                              <button onClick={() => setMusicDuration("30s")} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${musicDuration === '30s' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>30s</button>
-                              <button onClick={() => setMusicDuration("full")} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${musicDuration === 'full' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>Full</button>
-                            </div>
-                          </div>
-                          <button 
-                            onClick={() => setMusicInstrumental(!musicInstrumental)}
-                            className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${musicInstrumental ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-white/[0.02] border-white/[0.05] text-slate-400'}`}
-                          >
-                            <span className="text-[10px] font-black uppercase tracking-widest">Instrumental Mode</span>
-                            <div className={`w-10 h-5 rounded-full relative transition-colors ${musicInstrumental ? 'bg-emerald-500' : 'bg-slate-700'}`}>
-                              <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${musicInstrumental ? 'right-1' : 'left-1'}`} />
-                            </div>
-                          </button>
-                        </div>
+                      <div className="space-y-3">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Lyrics (Optional)</label>
+                        <textarea
+                          rows={3}
+                          value={musicLyrics}
+                          onChange={e => setMusicLyrics(e.target.value)}
+                          placeholder="Enter lyrics for the AI to sing..."
+                          className="w-full bg-white/[0.02] border border-white/[0.08] focus:border-emerald-500/50 rounded-2xl px-6 py-4 text-white outline-none transition-all text-sm leading-relaxed resize-none"
+                        />
+                      </div>
 
-                        <div className="relative pt-4">
-                           {driveStatus && driveStatus !== 'idle' && (
-                             <div className={`absolute top-0 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest border backdrop-blur-md transition-all duration-500 flex items-center gap-1 z-10 ${
-                               driveStatus === 'processing' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                               driveStatus === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                               'bg-rose-500/20 text-rose-400 border-rose-500/30'
-                             }`}>
-                               <div className={`w-1 h-1 rounded-full ${driveStatus === 'processing' ? 'bg-emerald-400 animate-pulse' : driveStatus === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-                               {driveStatus === 'processing' ? 'Syncing...' : driveStatus === 'success' ? 'Backed Up' : 'Sync Fail'}
-                             </div>
-                           )}
-                           <button
-                             onClick={handleGenerateMusic}
-                             disabled={audioLoading || !musicPrompt.trim()}
-                             className="w-full h-16 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-emerald-600/20 flex items-center justify-center gap-3"
-                           >
-                             {audioLoading ? <Spinner /> : 'Orchestrate AI Music'}
-                           </button>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.05] flex items-center justify-between">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Duration</span>
+                          <div className="flex bg-black/40 p-1 rounded-xl gap-1">
+                            <button onClick={() => setMusicDuration("30s")} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${musicDuration === '30s' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>30s</button>
+                            <button onClick={() => setMusicDuration("full")} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${musicDuration === 'full' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>Full</button>
+                          </div>
                         </div>
+                        <button
+                          onClick={() => setMusicInstrumental(!musicInstrumental)}
+                          className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${musicInstrumental ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-white/[0.02] border-white/[0.05] text-slate-400'}`}
+                        >
+                          <span className="text-[10px] font-black uppercase tracking-widest">Instrumental Mode</span>
+                          <div className={`w-10 h-5 rounded-full relative transition-colors ${musicInstrumental ? 'bg-emerald-500' : 'bg-slate-700'}`}>
+                            <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${musicInstrumental ? 'right-1' : 'left-1'}`} />
+                          </div>
+                        </button>
                       </div>
-                   </div>
+
+                      <div className="relative pt-4">
+                        {driveStatus && driveStatus !== 'idle' && (
+                          <div className={`absolute top-0 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest border backdrop-blur-md transition-all duration-500 flex items-center gap-1 z-10 ${driveStatus === 'processing' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                              driveStatus === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                                'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                            }`}>
+                            <div className={`w-1 h-1 rounded-full ${driveStatus === 'processing' ? 'bg-emerald-400 animate-pulse' : driveStatus === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                            {driveStatus === 'processing' ? 'Syncing...' : driveStatus === 'success' ? 'Backed Up' : 'Sync Fail'}
+                          </div>
+                        )}
+                        <button
+                          onClick={handleGenerateMusic}
+                          disabled={audioLoading || !musicPrompt.trim()}
+                          className="w-full h-16 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-emerald-600/20 flex items-center justify-center gap-3"
+                        >
+                          {audioLoading ? <Spinner /> : 'Orchestrate AI Music'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
               {mode === "image" && (
                 <div className="space-y-8 animate-in fade-in duration-700">
-                   <div className="glass-panel rounded-3xl p-6 md:p-8 border-white/[0.05]">
-                      <div className="flex flex-col mb-6">
-                         <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Visual Concept</span>
-                         <span className="text-xs text-slate-500 font-bold mt-1">Gemini will enhance your prompt into a technical masterpiece</span>
-                      </div>
-                      <textarea
-                        rows={6}
-                        value={imagePrompt}
-                        onChange={e => setImagePrompt(e.target.value)}
-                        placeholder="Describe the image... e.g., A cinematic shot of a futuristic data center..."
-                        className="w-full bg-white/[0.02] border border-white/[0.08] focus:border-cyan-500/50 rounded-2xl px-6 py-5 text-white outline-none transition-all text-sm leading-relaxed resize-none"
-                      />
-                      <div className="relative">
-                         {driveStatus && driveStatus !== 'idle' && (
-                           <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest border backdrop-blur-md transition-all duration-500 flex items-center gap-1 z-10 ${
-                             driveStatus === 'processing' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' :
-                             driveStatus === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                             'bg-rose-500/20 text-rose-400 border-rose-500/30'
-                           }`}>
-                             <div className={`w-1 h-1 rounded-full ${driveStatus === 'processing' ? 'bg-cyan-400 animate-pulse' : driveStatus === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-                             {driveStatus === 'processing' ? 'Syncing...' : driveStatus === 'success' ? 'Backed Up' : 'Sync Fail'}
-                           </div>
-                         )}
-                        <button
-                          onClick={handleGenerateImage}
-                          disabled={imageGenerating || !imagePrompt.trim()}
-                          className="mt-6 w-full h-14 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-cyan-600/20 flex items-center justify-center gap-3"
-                        >
-                          {imageGenerating ? <><Spinner /> Refining prompt & generating...</> : 'Render Visual Asset'}
-                        </button>
-                      </div>
-                   </div>
+                  <div className="glass-panel rounded-3xl p-6 md:p-8 border-white/[0.05]">
+                    <div className="flex flex-col mb-6">
+                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Visual Concept</span>
+                      <span className="text-xs text-slate-500 font-bold mt-1">Gemini will enhance your prompt into a technical masterpiece</span>
+                    </div>
+                    <textarea
+                      rows={6}
+                      value={imagePrompt}
+                      onChange={e => setImagePrompt(e.target.value)}
+                      placeholder="Describe the image... e.g., A cinematic shot of a futuristic data center..."
+                      className="w-full bg-white/[0.02] border border-white/[0.08] focus:border-cyan-500/50 rounded-2xl px-6 py-5 text-white outline-none transition-all text-sm leading-relaxed resize-none"
+                    />
+                    <div className="relative">
+                      {driveStatus && driveStatus !== 'idle' && (
+                        <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest border backdrop-blur-md transition-all duration-500 flex items-center gap-1 z-10 ${driveStatus === 'processing' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' :
+                            driveStatus === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                              'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                          }`}>
+                          <div className={`w-1 h-1 rounded-full ${driveStatus === 'processing' ? 'bg-cyan-400 animate-pulse' : driveStatus === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                          {driveStatus === 'processing' ? 'Syncing...' : driveStatus === 'success' ? 'Backed Up' : 'Sync Fail'}
+                        </div>
+                      )}
+                      <button
+                        onClick={handleGenerateImage}
+                        disabled={imageGenerating || !imagePrompt.trim()}
+                        className="mt-6 w-full h-14 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-cyan-600/20 flex items-center justify-center gap-3"
+                      >
+                        {imageGenerating ? <><Spinner /> Refining prompt & generating...</> : 'Render Visual Asset'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -1478,10 +1464,10 @@ export default function StudioPage() {
         )}
         <aside className={`w-full xl:w-[400px] xl:shrink-0 xl:border-l border-white/[0.05] bg-black/80 xl:backdrop-blur-3xl flex flex-col transition-all duration-500 absolute xl:fixed right-0 top-0 bottom-0 z-[150] ${activeMobileColumn === 'command' || showSettings ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0 xl:opacity-100 xl:translate-x-full pointer-events-none'}`}>
           <div className="p-4 md:p-6 border-b border-white/[0.05] bg-black/40 backdrop-blur-xl flex items-center justify-between">
-             <h2 className="text-sm font-black text-white uppercase tracking-[0.2em]">Command Center</h2>
-             <button onClick={() => { setActiveMobileColumn('stage'); setShowSettings(false); }} className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-             </button>
+            <h2 className="text-sm font-black text-white uppercase tracking-[0.2em]">Command Center</h2>
+            <button onClick={() => { setActiveMobileColumn('stage'); setShowSettings(false); }} className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
           </div>
           <ProSidebar
             isPro={profile?.plan === 'pro'}
@@ -1528,15 +1514,15 @@ export default function StudioPage() {
           </button>
           <div className="relative max-w-5xl w-full max-h-full flex flex-col items-center z-10 pointer-events-none">
             <div className="relative group w-full flex justify-center pointer-events-auto">
-               <img src={previewImage.url} alt="AI Preview" className="max-w-full max-h-[70vh] object-contain rounded-2xl shadow-[0_0_100px_rgba(0,0,0,0.8)] border border-white/10 transition-transform duration-700" />
-               <div className="absolute inset-0 rounded-2xl shadow-[inset_0_0_100px_rgba(0,0,0,0.4)] pointer-events-none" />
+              <img src={previewImage.url} alt="AI Preview" className="max-w-full max-h-[70vh] object-contain rounded-2xl shadow-[0_0_100px_rgba(0,0,0,0.8)] border border-white/10 transition-transform duration-700" />
+              <div className="absolute inset-0 rounded-2xl shadow-[inset_0_0_100px_rgba(0,0,0,0.4)] pointer-events-none" />
             </div>
             <div className="mt-8 bg-white/[0.03] border border-white/[0.08] p-6 rounded-2xl w-full max-w-2xl backdrop-blur-xl">
-               <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 block">AI Synthesis Concept</span>
-               <p className="text-white/80 text-sm font-medium leading-relaxed italic">"{previewImage.prompt}"</p>
-               <div className="mt-6 flex justify-center">
-                 <a href={previewImage.url} download="genbox-asset.jpg" className="px-8 py-3 bg-white text-black font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-indigo-500 hover:text-white transition-all shadow-xl">Download Master Asset</a>
-               </div>
+              <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 block">AI Synthesis Concept</span>
+              <p className="text-white/80 text-sm font-medium leading-relaxed italic">"{previewImage.prompt}"</p>
+              <div className="mt-6 flex justify-center">
+                <a href={previewImage.url} download="genbox-asset.jpg" className="px-8 py-3 bg-white text-black font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-indigo-500 hover:text-white transition-all shadow-xl">Download Master Asset</a>
+              </div>
             </div>
           </div>
         </div>
@@ -1645,22 +1631,21 @@ function InlineVoiceGenRow({
           <Spinner />
         ) : (
           <div className="flex flex-col items-center gap-1">
-             {driveStatus && driveStatus !== 'idle' && (
-               <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest border backdrop-blur-md transition-all duration-500 flex items-center gap-1 ${
-                 driveStatus === 'processing' ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30' :
-                 driveStatus === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                 'bg-rose-500/20 text-rose-400 border-rose-500/30'
-               }`}>
-                 <div className={`w-1 h-1 rounded-full ${driveStatus === 'processing' ? 'bg-indigo-400 animate-pulse' : driveStatus === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-                 {driveStatus === 'processing' ? 'Syncing...' : driveStatus === 'success' ? 'Backed Up' : 'Sync Fail'}
-               </div>
-             )}
-             <div className="flex items-center gap-2">
-                <svg className="w-4 h-4 group-hover:animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-                </svg>
-                Generate
-             </div>
+            {driveStatus && driveStatus !== 'idle' && (
+              <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest border backdrop-blur-md transition-all duration-500 flex items-center gap-1 ${driveStatus === 'processing' ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30' :
+                  driveStatus === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                    'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                }`}>
+                <div className={`w-1 h-1 rounded-full ${driveStatus === 'processing' ? 'bg-indigo-400 animate-pulse' : driveStatus === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                {driveStatus === 'processing' ? 'Syncing...' : driveStatus === 'success' ? 'Backed Up' : 'Sync Fail'}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 group-hover:animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+              </svg>
+              Generate
+            </div>
           </div>
         )}
       </button>
@@ -1743,7 +1728,7 @@ function ProGateOverlay({ onUpgrade, feature }: { onUpgrade: () => void; feature
     <div className="absolute inset-0 z-20 flex items-center justify-center p-8 text-center bg-black/40 backdrop-blur-md rounded-3xl border border-white/10">
       <div className="max-w-md space-y-6">
         <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mx-auto shadow-2xl">
-           <svg className="w-8 h-8 text-indigo-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C9.243 2 7 4.243 7 7v3H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V12a2 2 0 00-2-2h-1V7c0-2.757-2.243-5-5-5zM9 7c0-1.654 1.346-3 3-3s3 1.346 3 3v3H9V7z" /></svg>
+          <svg className="w-8 h-8 text-indigo-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C9.243 2 7 4.243 7 7v3H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V12a2 2 0 00-2-2h-1V7c0-2.757-2.243-5-5-5zM9 7c0-1.654 1.346-3 3-3s3 1.346 3 3v3H9V7z" /></svg>
         </div>
         <h3 className="text-2xl font-black text-white uppercase tracking-tighter">{feature} Mode</h3>
         <p className="text-slate-400 text-sm font-bold uppercase tracking-widest leading-relaxed">

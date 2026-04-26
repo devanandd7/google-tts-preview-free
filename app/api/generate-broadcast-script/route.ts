@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
+import { getTagsString } from "@/lib/tts-tags";
 import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
@@ -98,8 +99,9 @@ export async function POST(req: Request) {
     if (!prompt?.trim()) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
-    if (durationMinutes > 5) {
-      return NextResponse.json({ error: "Duration cannot exceed 5 minutes" }, { status: 400 });
+    const maxDuration = user.plan === "pro" ? 5 : 2;
+    if (durationMinutes > maxDuration) {
+      return NextResponse.json({ error: `Duration limit exceeded. Your plan allows up to ${maxDuration} minutes.` }, { status: 400 });
     }
 
     const userApiKey = user.plan === "pro" && user.ownApiKey ? decrypt(user.ownApiKey) : null;
@@ -169,49 +171,50 @@ Embed REAL human sounds and reactions DIRECTLY in the text:
 - Shock: "No way!", "Yeh toh kamal ho gaya!"
 
 ## OFFICIAL GEMINI 3.1 TTS TAG LIBRARY:
-Use ONLY these verified tags. Place ONE tag at a time — NEVER two tags 
-consecutively. Always follow a tag immediately with spoken text.
+CRITICAL RULE: You can ONLY use the following inline emotion tags: 
+\${getTagsString()}
 
-EMOTION TAGS:
-[happy] [enthusiasm] [amusement] [curiosity] [interest]
-[hope] [determination] [positive] [neutral] [negative]
-[frustration] [annoyance] [tension] [nervousness] [confusion]
-[anger] [agitation] [sadness] [fear] [disgust]
+Do not invent or use any other tags (e.g., do not use [happy] or [gasps]).
+Place ONE tag at a time — NEVER two tags consecutively. Always follow a tag immediately with spoken text.
 
-PACING TAGS:
-[slow] [fast] [short pause] [long pause]
-
-VOCAL/NON-VERBAL TAGS:
-[whispers] [laughs] [chuckles] [sighs] [gasps] [uhm]
+Pacing and Spacing:
+- Use "..." (ellipsis) where topics change — DO NOT write [pause], TTS reads it literally.
+- Always follow "..." with a high-energy re-entry tag.
+- Always include double line breaks (\\n\\n) between paragraphs.
 
 ### CORRECT TAG USAGE EXAMPLES:
-✅ [enthusiasm] Good morning dosto!
+✅ [energetic] Good morning dosto!
 ✅ Hahaha! [amusement] Yaar yeh toh mujhe pata hi nahi tha!
 ✅ [curiosity] Matlab... sach mein aisa hota hai?
-✅ [sighs] Haan yaar, [short pause] aaj ka din alag hi tha.
+✅ [sighs] Haan yaar, ... [enthusiasm] aaj ka din alag hi tha.
 
 ### WRONG — NEVER DO THIS:
 ❌ [radio dj] [excitedly] Good morning  ← two tags consecutive
 ❌ [warmly] hello  ← not an official tag
 ❌ [like a tired detective]  ← invented tag, will break output
+❌ [pause]  ← TTS reads it literally! Use "..." instead
 
-## ENERGY ARC — MUST VARY DYNAMICALLY:
+## ENERGY ARC & FLOW — MUST VARY DYNAMICALLY:
 - HIGH energy opening — hook the audience immediately
-- Warm/funny mid-section — personal, relatable banter  
-- Excited peak — interesting reveal or fact drop
+- PERIODIC ENERGY RESET: At the start of EVERY new topic, inject [energetic], [enthusiasm], or [determination] to prevent voice energy from fading.
+- EMOTIONAL STABILITY: Use 1-2 dominant emotions per story section. Do not switch tags every sentence.
+- MOMENTUM: Never place "..." immediately after a high-energy tag. Let momentum carry the sentence through, then pause.
+- VARIED SUMMARIES: Vary section endings: 1st [neutral], 2nd [optimistic], 3rd [professional].
+- TECHNICAL CONTENT: Break long technical sentences into fragments. Use [emphasis] on key numbers.
+- RE-ENTRY: After every "...", you MUST provide a re-entry tag. Never leave a pause without a follow-up energy instruction.
 - Warm sign-off — memorable, heartfelt close
 
 ## REFERENCE — CORRECT RADIO STYLE:
-[${voice1}: [enthusiasm] Good morning dosto! Main hoon ${voice1} — aur mere saath hain ${voice2}!]
-[${voice2}: [laughs] Hahaha! Shukriya ${voice1}! Aaj ka topic ekdum zabardast hai!]
-[${voice1}: Arre bilkul! [amusement] Warna main toh studio mein so jaata!]
-[${voice2}: [gasps] Wait seriously?! [short pause] Bhai, tune coffee nahi pee kya?]
-[${voice1}: [determination] Pee toh li — par suno, aaj ka topic sunke neend ude gi!]
-[${voice2}: [curiosity] Ohoho! Batao batao — main ready hoon!]
-[${voice1}: [slow] Aaj baat karenge... [long pause] zindagi ki choti choti khushiyon ki.]
-[${voice2}: [sighs] Ahh... ${voice1} yeh toh dil ko chhu gaya. Sach mein hum bhool jaate hain.]
-[${voice1}: Haan yaar. [short pause] Aur aaj hum isko feel karenge — theek hai?]
-[${voice2}: [happy] Bilkul! Listeners — chai pakad lo, hum shuru karte hain!]
+[\${voice1}: [energetic] Good morning dosto! Main hoon \${voice1} — aur mere saath hain \${voice2}!]
+[\${voice2}: [laughs] Hahaha! Shukriya \${voice1}! Aaj ka topic ekdum zabardast hai!]
+[\${voice1}: Arre bilkul! [amusement] Warna main toh studio mein so jaata!]
+[${voice2}: [awe] Wait seriously?! ... [enthusiasm] Bhai, tune coffee nahi pee kya?]
+[\${voice1}: [authoritative] Pee toh li — par suno, aaj ka topic sunke neend ude gi!]
+[\${voice2}: [thoughtful] Ohoho! Batao batao — main ready hoon!]
+[\${voice1}: [slow] Aaj baat karenge... ... [curiosity] zindagi ki choti choti khushiyon ki.]
+[\${voice2}: [sighs] Ahh... \${voice1} yeh toh dil ko chhu gaya. Sach mein hum bhool jaate hain.]
+[\${voice1}: Haan yaar. ... [enthusiasm] Aur aaj hum isko feel karenge — theek hai?]
+[\${voice2}: [optimistic] Bilkul! Listeners — chai pakad lo, hum shuru karte hain!]
 
 ## CONTENT:
 Speaker 1: ${voice1} (${gender1}) — energetic, humorous, drives the show
@@ -222,7 +225,8 @@ ${timeInfo}
 
 ${langInstruction}
 
-Write the broadcast directly — open with HIGH ENERGY:`
+Write the broadcast directly — open with HIGH ENERGY.
+STRICT LIMIT: The entire script MUST be UNDER 4450 characters. If it exceeds this, the production will fail.`
         })
       );
     };

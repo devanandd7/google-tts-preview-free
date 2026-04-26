@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { PRO_DURATION_MS, PRO_PRICE_PAISE } from "@/lib/constants";
+import { sendEmail, getSubscriptionTemplate } from "@/lib/mail";
 
 export async function POST(req: Request) {
   try {
@@ -66,6 +67,19 @@ export async function POST(req: Request) {
     user.planExpiresAt = expiresAt;
 
     await user.save();
+
+    // ── Send Confirmation Email (Async) ───────────────────────────────────
+    try {
+      const emailHtml = getSubscriptionTemplate(
+        user.name || "GenBox User",
+        "Pro",
+        expiresAt.toLocaleDateString()
+      );
+      // We don't 'await' this so the user doesn't wait for SMTP to finish
+      sendEmail(user.email, "Welcome to GenBox Pro!", emailHtml);
+    } catch (e) {
+      console.error("[Email Error] Failed to send subscription email:", e);
+    }
 
     return NextResponse.json({
       success: true,

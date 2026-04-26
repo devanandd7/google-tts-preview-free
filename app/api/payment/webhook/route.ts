@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { PRO_DURATION_MS, PRO_PRICE_PAISE } from "@/lib/constants";
+import { sendEmail, getSubscriptionTemplate } from "@/lib/mail";
 
 export const dynamic = "force-dynamic";
 
@@ -90,6 +91,18 @@ export async function POST(req: Request) {
 
       await user.save();
       console.log(`[Webhook] Success: Upgraded ${user.email} to Pro until ${expiresAt.toISOString()}`);
+
+      // ── Send Confirmation Email (Async) ───────────────────────────────────
+      try {
+        const emailHtml = getSubscriptionTemplate(
+          user.name || "GenBox User",
+          "Pro",
+          expiresAt.toLocaleDateString()
+        );
+        sendEmail(user.email, "Welcome to GenBox Pro!", emailHtml);
+      } catch (e) {
+        console.error("[Email Error] Failed to send subscription email:", e);
+      }
     }
 
     // Always return 200 to Razorpay to acknowledge receipt

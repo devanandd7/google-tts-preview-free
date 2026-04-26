@@ -3,6 +3,7 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { decrypt } from "@/lib/encryption";
+import { sendEmail, getFreeWelcomeTemplate } from "@/lib/mail";
 import {
   resetDailyIfNeeded,
   getDailyCount,
@@ -56,6 +57,17 @@ export async function GET() {
           ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
           : undefined,
       });
+
+      // ── Send Welcome Email to Free Users ────────────────────────────────
+      if (!isAdmin && email) {
+        try {
+          const name = clerkUser.firstName || clerkUser.username || "GenBox User";
+          const html = getFreeWelcomeTemplate(name);
+          sendEmail(email, "Welcome to GenBox Studio! 🚀", html);
+        } catch (e) {
+          console.error("[Welcome Email Error]", e);
+        }
+      }
     } else {
       // Always sync email and upgrade admin to Pro if not already
       let needsSave = false;

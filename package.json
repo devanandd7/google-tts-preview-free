@@ -19,6 +19,7 @@
     "fluent-ffmpeg": "^2.1.3",
     "framer-motion": "^12.38.0",
     "googleapis": "^171.4.0",
+    "graphify": "^1.0.0",
     "lucide-react": "^1.8.0",
     "mongoose": "^9.4.1",
     "next": "16.2.4",

@@ -71,7 +71,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { prompt } = await req.json();
+    const { prompt, useSiliconFlow } = await req.json();
 
     if (!prompt?.trim()) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
@@ -186,16 +186,59 @@ User's idea: ${prompt}`,
     const enhancedPrompt = response.text?.trim() || prompt;
     const seed = Math.floor(Math.random() * 1000000);
 
-    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
+    let base64Image = "";
+    let imageBuffer: Buffer = Buffer.alloc(0);
 
-    const imgRes = await fetch(url);
-    if (!imgRes.ok) {
-      throw new Error("Failed to fetch image from Pollinations API");
+    if (useSiliconFlow && process.env.SILICONFLOW_API_KEY) {
+      const sfKey = process.env.SILICONFLOW_API_KEY || "";
+      console.log("[SiliconFlow] Using key prefix:", sfKey.slice(0, 15), "| key length:", sfKey.length);
+      const sfUrl = "https://api.siliconflow.com/v1/images/generations";
+      const sfRes = await fetch(sfUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${sfKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "Tongyi-MAI/Z-Image-Turbo",
+          prompt: enhancedPrompt,
+          image_size: "1024x1024",
+          seed: seed
+        })
+      });
+
+      if (!sfRes.ok) {
+        const errText = await sfRes.text();
+        console.error("SiliconFlow API Error:", errText);
+        throw new Error(`SiliconFlow API failed: ${sfRes.status} ${errText}`);
+      }
+
+      const sfData = await sfRes.json();
+      const imageUrl = sfData.images?.[0]?.url;
+
+      if (!imageUrl) {
+        throw new Error("No image returned from SiliconFlow API");
+      }
+
+      const imgFetchRes = await fetch(imageUrl);
+      if (!imgFetchRes.ok) {
+        throw new Error("Failed to download image from SiliconFlow");
+      }
+      const sfArrayBuffer = await imgFetchRes.arrayBuffer();
+      imageBuffer = Buffer.from(sfArrayBuffer);
+      base64Image = imageBuffer.toString("base64");
+    } else {
+      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
+
+      const imgRes = await fetch(url);
+      if (!imgRes.ok) {
+        throw new Error("Failed to fetch image from Pollinations API");
+      }
+
+      const arrayBuffer = await imgRes.arrayBuffer();
+      imageBuffer = Buffer.from(arrayBuffer);
+      base64Image = imageBuffer.toString("base64");
     }
-
-    const arrayBuffer = await imgRes.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const base64Image = buffer.toString("base64");
 
     // ── Google Drive Auto-Backup ────────────────────────────────────────────────
     let driveUploadStatus = "none";
@@ -208,7 +251,7 @@ User's idea: ${prompt}`,
         const cleanPrompt = prompt.slice(0, 30).replace(/[^a-z0-9]/gi, "_").trim();
         const fileName = `GenBox_Image_${cleanPrompt || "Visual"}_${timestamp}.jpg`;
         
-        const driveResult = await uploadToDrive(jsonKey, buffer, fileName, "image/jpeg", user.driveFolderId, user.driveRefreshToken);
+        const driveResult = await uploadToDrive(jsonKey, imageBuffer, fileName, "image/jpeg", user.driveFolderId, user.driveRefreshToken);
         driveUploadStatus = "success";
         driveFileLink = driveResult.webViewLink;
 

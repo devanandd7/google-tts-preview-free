@@ -233,6 +233,7 @@ export default function StudioPage() {
 
   // Image State
   const [imagePrompt, setImagePrompt] = useState("");
+  const [useSiliconFlow, setUseSiliconFlow] = useState(false);
   const [imageGenerating, setImageGenerating] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; prompt: string } | null>(null);
 
@@ -710,7 +711,7 @@ export default function StudioPage() {
       const res = await fetch("/api/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: imagePrompt }),
+        body: JSON.stringify({ prompt: imagePrompt, useSiliconFlow }),
       });
       const data = await res.json();
 
@@ -1562,6 +1563,17 @@ export default function StudioPage() {
                       placeholder="Describe the image... e.g., A cinematic shot of a futuristic data center..."
                       className="w-full bg-white/[0.02] border border-white/[0.08] focus:border-cyan-500/50 rounded-2xl px-6 py-5 text-white outline-none transition-all text-sm leading-relaxed resize-none"
                     />
+                    <div className="flex items-center justify-end mt-4 mb-2">
+                      <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setUseSiliconFlow(!useSiliconFlow)}>
+                        <div className="flex flex-col items-end text-right">
+                          <span className="text-[10px] font-black text-white uppercase tracking-widest">SiliconFlow Engine</span>
+                          <span className="text-[8px] text-slate-500 font-bold uppercase tracking-tighter">Use high-fidelity FLUX model</span>
+                        </div>
+                        <div className={`w-10 h-5 rounded-full relative transition-all duration-300 ${useSiliconFlow ? 'bg-cyan-600' : 'bg-slate-700'}`}>
+                          <div className={`absolute top-[2px] w-4 h-4 bg-white rounded-full transition-all duration-300 ${useSiliconFlow ? 'right-1' : 'left-1'}`} />
+                        </div>
+                      </div>
+                    </div>
                     <div className="relative">
                       {driveStatus && driveStatus !== 'idle' && (
                         <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest border backdrop-blur-md transition-all duration-500 flex items-center gap-1 z-10 ${driveStatus === 'processing' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' :

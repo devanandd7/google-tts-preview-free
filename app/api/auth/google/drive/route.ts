@@ -16,10 +16,8 @@ export async function GET() {
   console.log("Redirect URI:", process.env.GOOGLE_REDIRECT_URI);
   console.log("--------------------------------");
 
-  // Scopes for full drive access (to find/create folders)
   const scopes = [
     "https://www.googleapis.com/auth/drive.file",
-    "https://www.googleapis.com/auth/drive.metadata.readonly",
     "https://www.googleapis.com/auth/userinfo.email",
   ];
 

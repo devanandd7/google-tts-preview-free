@@ -12,6 +12,7 @@ export interface IPaymentRecord {
 
 export interface IUser extends Document {
   clerkId: string;
+  name?: string;
   email: string;
   plan: "free" | "pro";
   planStatus: "active" | "expired" | "none";
@@ -68,6 +69,7 @@ const PaymentRecordSchema = new Schema<IPaymentRecord>(
 const UserSchema = new Schema<IUser>(
   {
     clerkId:           { type: String, required: true, unique: true },
+    name:              { type: String },
     email:             { type: String, required: false },
     plan:              { type: String, enum: ["free", "pro"], default: "free" },
     planStatus:        { type: String, enum: ["active", "expired", "none"], default: "none" },

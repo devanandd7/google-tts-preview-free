@@ -46,9 +46,14 @@ export async function GET() {
 
     // ── Still not found — auto-create ──
     const isAdmin = ADMIN_EMAILS.includes(email);
+    const fullName = clerkUser.firstName 
+      ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim() 
+      : clerkUser.username || "GenBox User";
+
     if (!user) {
       user = await User.create({
         clerkId: userId,
+        name: fullName,
         email,
         plan: isAdmin ? "pro" : "free",
         planStatus: isAdmin ? "active" : "none",
@@ -61,18 +66,21 @@ export async function GET() {
       // ── Send Welcome Email to Free Users ────────────────────────────────
       if (!isAdmin && email) {
         try {
-          const name = clerkUser.firstName || clerkUser.username || "GenBox User";
-          const html = getFreeWelcomeTemplate(name);
+          const html = getFreeWelcomeTemplate(fullName);
           sendEmail(email, "Welcome to GenBox Studio! 🚀", html);
         } catch (e) {
           console.error("[Welcome Email Error]", e);
         }
       }
     } else {
-      // Always sync email and upgrade admin to Pro if not already
+      // Always sync email and name and upgrade admin to Pro if not already
       let needsSave = false;
       if (user.email !== email) {
         user.email = email;
+        needsSave = true;
+      }
+      if (!user.name || user.name === "GenBox User") {
+        user.name = fullName;
         needsSave = true;
       }
       if (isAdmin && user.plan !== "pro") {

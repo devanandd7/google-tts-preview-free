@@ -1,6 +1,6 @@
-import { connectDB } from "./lib/mongodb";
-import User from "./models/User";
-import { sendEmail, getExpiryWarningTemplate } from "./lib/mail";
+import { connectDB } from "../lib/mongodb";
+import User from "../models/User";
+import { sendEmail, getExpiryWarningTemplate } from "../lib/mail";
 
 /**
  * Run this script via a Cron Job (e.g., daily at 9 AM)
